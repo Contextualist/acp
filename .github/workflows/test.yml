@@ -1,0 +1,80 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+
+jobs:
+
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: stable
+          cache: true
+
+      - uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+
+      - name: Go mod
+        env:
+          DIFF_PATH: "go.mod go.sum"
+        run: |
+          go mod tidy
+          DIFF=$(git status --porcelain -- $DIFF_PATH)
+          if [ "$DIFF" ]; then
+            echo 'Please run `go mod tidy` before commits involving dependency change'
+            exit 1
+          fi
+
+
+  build:
+    name: Build
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: stable
+          cache: true
+
+      - run: go build ./cmd/acp
+
+
+  test:
+    name: Test
+    needs: build
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: stable
+          cache: true
+
+      - run: go test ./...
+
