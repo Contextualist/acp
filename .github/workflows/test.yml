@@ -56,7 +56,12 @@ jobs:
           go-version: stable
           cache: true
 
-      - run: go build ./cmd/acp
+      - run: go build -ldflags "-X main.buildTag=dev.$(git rev-parse --short HEAD)" -o bin/ ./cmd/acp
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: acp-${{ matrix.os }}
+          path: bin/
 
 
   test:
