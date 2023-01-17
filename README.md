@@ -6,7 +6,7 @@ Highlights (aka "Why making another file-transfer tool?"):
 
 - Designed for personal use; no need to copy-paste a token / code for each transfer
 - Rendezvous service runs distributively on [serverless edge function](https://deno.com/deploy/docs),
-  a robust solution with low latency worldwide.
+  a robust solution with low latency worldwide. ([How does this work?](docs/mechanism.md))
 
 Other features:
 
