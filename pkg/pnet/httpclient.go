@@ -17,7 +17,7 @@ func NewHTTPClient(useIpv6 bool) *HTTPClient {
 		chLaddr: make(chan net.Addr, 1),
 	}
 
-	tr := *(http.DefaultTransport.(*http.Transport)) // create a value copy of the default
+	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.DialContext = func(ctx context.Context, _network, addr string) (net.Conn, error) {
 		network := "tcp4"
 		if useIpv6 {
@@ -32,7 +32,7 @@ func NewHTTPClient(useIpv6 bool) *HTTPClient {
 		}
 		return c, err
 	}
-	client.Client.Transport = &tr
+	client.Client.Transport = tr
 	return client
 }
 
