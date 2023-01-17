@@ -80,12 +80,20 @@ func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, useIPv6 
 		return nil, context.Canceled
 	}
 
+	var respOrErr responseOrError
 	err = sendPacket(sendWriter, []byte(fmt.Sprintf("%s|%s", laddr, id)))
 	if err != nil {
+		select { // check if this is due to an error occurred during request opening
+		case respOrErr = <-chRespOrErr:
+			if respOrErr.error != nil {
+				return nil, respOrErr.error
+			}
+		default:
+		}
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
 	}
 	defaultLogger.Infof("waiting for peer...")
-	respOrErr := <-chRespOrErr
+	respOrErr = <-chRespOrErr
 	if respOrErr.error != nil {
 		return nil, respOrErr.error
 	}
@@ -178,7 +186,6 @@ func connect(ctx context.Context, laddr, raddr string, chWin chan<- net.Conn, cc
 		if err == nil {
 			break
 		}
-		time.Sleep(dialAttemptInterval)
 		select {
 		case <-time.After(dialAttemptInterval):
 		case <-ctx.Done():

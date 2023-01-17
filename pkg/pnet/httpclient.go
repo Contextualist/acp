@@ -23,9 +23,6 @@ func NewHTTPClient(useIpv6 bool) *HTTPClient {
 				network = "tcp6"
 			}
 			c, err := DialContext(ctx, network, ":0", addr)
-			if err != nil {
-				return nil, err
-			}
 			client.chLaddr <- c.LocalAddr()
 			return c, err
 		},
