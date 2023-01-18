@@ -8,7 +8,7 @@ async function handleExchange(req: Request, connInfo: ConnInfo): Promise<Respons
   if (req.headers.get("Content-Type") != "application/octet-stream")
     return new Response("Invalid content type", { status: 415 })
 
-  const pubAddr = `${connInfo.remoteAddr.hostname}:${connInfo.remoteAddr.port}`
+  const pubAddr = joinHostPort(connInfo.remoteAddr)
   const conn = req.body!.getReader({ mode: "byob" })
   const [priAddr, chanName] = new TextDecoder().decode(
     await receivePacket(conn)
@@ -74,6 +74,13 @@ async function exchangeViaBroadcastChannel(name: string, x0: string): Promise<st
 async function clientClosed(conn: ReadableStreamBYOBReader): Promise<void> {
   await conn.read(new Uint8Array(1))
   //console.log("client early close")
+}
+
+
+function joinHostPort(addr: Deno.NetAddr): string {
+  if (addr.hostname.includes(":"))
+    return `[${addr.hostname}]:${addr.port}`
+  return `${addr.hostname}:${addr.port}`
 }
 
 

@@ -103,9 +103,7 @@ func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, useIPv6 
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
 	}
 	tmp := strings.Split(string(recv), "|")
-	peerLaddr, peerRaddr := tmp[0], tmp[1]
-	peerRaddrRe, _ := resolveAddr("tcp", peerRaddr)
-	peerRaddr = peerRaddrRe.String()
+	peerRaddr, peerLaddr := tmp[0], tmp[1]
 
 	return &connInfo{laddr, peerLaddr, peerRaddr}, nil
 }
