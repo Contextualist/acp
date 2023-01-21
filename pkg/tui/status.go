@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"io"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -38,7 +39,7 @@ func (c *StatusControl) Next(m tea.Model) {
 
 type meteredReadWriteCloser struct {
 	io.ReadWriteCloser
-	rate, total uint64
+	rate, total atomic.Uint64
 	startTime   time.Time
 	ticker      *time.Ticker
 }
@@ -52,7 +53,7 @@ func newMeteredReadWriteCloser(inner io.ReadWriteCloser, interval time.Duration)
 	}
 	go func() {
 		for range ticker.C {
-			m.rate = uint64(float64(m.total) / time.Since(m.startTime).Seconds())
+			m.rate.Store(uint64(float64(m.total.Load()) / time.Since(m.startTime).Seconds()))
 		}
 	}()
 	return m
@@ -60,12 +61,12 @@ func newMeteredReadWriteCloser(inner io.ReadWriteCloser, interval time.Duration)
 
 func (m *meteredReadWriteCloser) Read(p []byte) (n int, err error) {
 	n, err = m.ReadWriteCloser.Read(p)
-	m.total += uint64(n)
+	m.total.Add(uint64(n))
 	return
 }
 func (m *meteredReadWriteCloser) Write(p []byte) (n int, err error) {
 	n, err = m.ReadWriteCloser.Write(p)
-	m.total += uint64(n)
+	m.total.Add(uint64(n))
 	return
 }
 func (m *meteredReadWriteCloser) Close() error {
@@ -113,5 +114,6 @@ func (m StatusModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m StatusModel) View() string {
-	return fmt.Sprintf("%s  %6s/s  %6s", m.spinner.View(), humanize.Bytes(m.status.rate), humanize.Bytes(m.status.total))
+	rate, total := m.status.rate.Load(), m.status.total.Load()
+	return fmt.Sprintf("%s  %6s/s  %6s", m.spinner.View(), humanize.Bytes(rate), humanize.Bytes(total))
 }
