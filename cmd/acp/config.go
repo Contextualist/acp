@@ -33,23 +33,24 @@ func (conf *Config) applyDefault() {
 
 var configFilename = filepath.Join(userConfigDir(), "acp", "config.json")
 
-func setup(confStr string) error {
+func setup(confStr string) (err error) {
+	var conf *Config
 	if confStr != "" {
-		var conf Config
-		if err := json.Unmarshal([]byte(confStr), &conf); err != nil {
+		conf = &Config{}
+		if err = json.Unmarshal([]byte(confStr), conf); err != nil {
 			return err
 		}
-		if err := setConfig(&conf); err != nil {
+		if err = setConfig(conf); err != nil {
 			return err
 		}
 	} else {
-		conf, err := getConfig()
+		conf, err = getConfig()
 		if errors.Is(err, os.ErrNotExist) {
 			conf = &Config{
 				ID:  base64.StdEncoding.EncodeToString(randBytes(idLen)),
 				PSK: base64.StdEncoding.EncodeToString(randBytes(pskLen)),
 			}
-			if err := setConfig(conf); err != nil {
+			if err = setConfig(conf); err != nil {
 				return err
 			}
 		} else if err != nil {
@@ -58,17 +59,18 @@ func setup(confStr string) error {
 		confBytes, _ := json.Marshal(&conf)
 		confStr = string(confBytes)
 	}
+	conf.applyDefault()
 	fmt.Printf(`acp is set up on this machine. To set up another machine, run the following command there
 (DO NOT share the command publicly as it contains encryption keys)
 	
-    curl -fsS https://acp.deno.dev/get | sh -s -- --setup-with '%s'
+    curl -fsS %s/get | sh -s -- --setup-with '%s'
 
 (For Windows PowerShell, you need to download the executable to the Path manually)
 If you already have the executable, run
 
     acp --setup-with '%s'
 
-`, confStr, confStr)
+`, conf.Server, confStr, confStr)
 	return nil
 }
 
