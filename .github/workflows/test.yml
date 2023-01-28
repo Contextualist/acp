@@ -81,5 +81,26 @@ jobs:
           go-version: stable
           cache: true
 
-      - run: go test ./...
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Unit test
+        run: go test -timeout 30s ./...
+
+      - name: Integration test
+        env:
+          FILES: ./pkg
+        run: |
+          deno run --allow-net=:8000 edge/index.ts &
+          go run ./cmd/acp --setup-with '{"id":"AAAAAAAA","psk":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","server":"http://localhost:8000"}'
+          go run ./cmd/acp $FILES &
+          go run ./cmd/acp -d $FILES-copied
+          rm -r $FILES && mv $FILES-copied $FILES
+          DIFF=$(git status --porcelain -- $FILES)
+          if [ "$DIFF" ]; then
+            echo "Transferred content not matched:"
+            echo "$DIFF"
+            exit 1
+          fi
 
