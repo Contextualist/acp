@@ -68,6 +68,7 @@ jobs:
     name: Test
     needs: build
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
@@ -89,13 +90,14 @@ jobs:
         run: go test -timeout 30s ./...
 
       - name: Integration test
+        shell: bash
         env:
           FILES: ./pkg
         run: |
           deno run --allow-net=:8000 edge/index.ts &
           go run ./cmd/acp --setup-with '{"id":"AAAAAAAA","psk":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","server":"http://localhost:8000"}'
-          go run ./cmd/acp $FILES &> sender.log &
-          go run ./cmd/acp -d $FILES-copied &> receiver.log
+          go run ./cmd/acp $FILES &
+          go run ./cmd/acp -d $FILES-copied
           rm -r $FILES && mv $FILES-copied $FILES
           DIFF=$(git status --porcelain -- $FILES)
           if [ "$DIFF" ]; then
@@ -103,12 +105,4 @@ jobs:
             echo "$DIFF"
             exit 1
           fi
-
-      - uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: integration_testlog-${{ matrix.os }}
-          path: |
-            sender.log
-            receiver.log
 

@@ -16,7 +16,11 @@ var (
 // RunProgram runs a tea.Program with a tea.Model as the initial model,
 // which can switch itself to other model in its Update func.
 func RunProgram(model tea.Model, cancel context.CancelFunc) tea.Model {
-	programSingleton = tea.NewProgram(model)
+	var opts []tea.ProgramOption
+	if os.Getenv("CI") != "" { // disable TTY access during CI
+		opts = append(opts, tea.WithInput(nilReader{}))
+	}
+	programSingleton = tea.NewProgram(model, opts...)
 	userCancel = cancel
 	m, err := programSingleton.Run()
 	if err != nil {
@@ -33,4 +37,11 @@ type modelSwitchMsg struct {
 func modelSwitchTo(m tea.Model) tea.Model {
 	go func() { programSingleton.Send(m.Init()()) }()
 	return m
+}
+
+type nilReader struct{}
+
+func (nilReader) Read([]byte) (int, error) {
+	<-(chan struct{})(nil)
+	return 0, nil
 }
