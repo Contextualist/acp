@@ -94,8 +94,8 @@ jobs:
         run: |
           deno run --allow-net=:8000 edge/index.ts &
           go run ./cmd/acp --setup-with '{"id":"AAAAAAAA","psk":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","server":"http://localhost:8000"}'
-          go run ./cmd/acp $FILES &
-          go run ./cmd/acp -d $FILES-copied
+          go run ./cmd/acp $FILES &> sender.log &
+          go run ./cmd/acp -d $FILES-copied &> receiver.log
           rm -r $FILES && mv $FILES-copied $FILES
           DIFF=$(git status --porcelain -- $FILES)
           if [ "$DIFF" ]; then
@@ -103,4 +103,12 @@ jobs:
             echo "$DIFF"
             exit 1
           fi
+
+      - uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: integration_testlog-${{ matrix.os }}
+          path: |
+            sender.log
+            receiver.log
 
