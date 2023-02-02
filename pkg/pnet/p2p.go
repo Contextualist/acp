@@ -14,8 +14,8 @@ import (
 type (
 	lenType uint16
 
-	responseOrError struct {
-		*http.Response
+	readerOrError struct {
+		io.ReadCloser
 		error
 	}
 
@@ -52,25 +52,23 @@ func HolePunching(ctx context.Context, bridgeURL string, id string, useIPv6 bool
 func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, useIPv6 bool) (*connInfo, error) {
 	client := NewHTTPClient(useIPv6)
 	sendReader, sendWriter := io.Pipe()
-	defer sendWriter.Close()
-	reqCtx, cancelReqCtx := context.WithCancel(context.Background())
-	go func() {
-		<-ctx.Done()
-		_, _ = sendWriter.Write([]byte{0xff}) // notify early close
-		cancelReqCtx()
-	}()
+	reqCtx, cancelReq := context.WithCancel(context.Background())
+	defer cancelReq()
 	req, err := http.NewRequestWithContext(reqCtx, "POST", bridgeURL, sendReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open a connection to the bridge: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
-	chRespOrErr := make(chan responseOrError)
+	chRecvOrErr := make(chan readerOrError)
 	go func() {
 		resp, err := client.Do(req)
 		if err != nil {
 			err = fmt.Errorf("failed to open a connection to the bridge: %w", err)
+			chRecvOrErr <- readerOrError{nil, err}
+		} else {
+			chRecvOrErr <- readerOrError{resp.Body, nil}
 		}
-		chRespOrErr <- responseOrError{resp, err}
+		close(chRecvOrErr)
 	}()
 	var laddr string
 	select {
@@ -80,25 +78,38 @@ func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, useIPv6 
 		return nil, context.Canceled
 	}
 
-	var respOrErr responseOrError
-	err = sendPacket(sendWriter, []byte(fmt.Sprintf("%s|%s", laddr, id)))
+	return exchangeConnInfoProto(ctx, sendWriter, chRecvOrErr, laddr, id, cancelReq)
+}
+
+func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrErr <-chan readerOrError, laddr string, id string, cancelReq context.CancelFunc) (*connInfo, error) {
+	defer sender.Close()
+
+	err := sendPacket(sender, []byte(fmt.Sprintf("%s|%s", laddr, id)))
 	if err != nil {
 		select { // check if this is due to an error occurred during request opening
-		case respOrErr = <-chRespOrErr:
-			if respOrErr.error != nil {
-				return nil, respOrErr.error
+		case recvOrErr := <-chRecvOrErr:
+			if recvOrErr.error != nil {
+				return nil, recvOrErr.error
 			}
 		default:
 		}
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
 	}
+
 	defaultLogger.Infof("waiting for peer...")
-	respOrErr = <-chRespOrErr
-	if respOrErr.error != nil {
-		return nil, respOrErr.error
+	var recvOrErr readerOrError
+	select {
+	case recvOrErr = <-chRecvOrErr:
+	case <-ctx.Done():
+		_, _ = sender.Write([]byte{0xff}) // notify early close
+		cancelReq()
+		return nil, context.Canceled
 	}
-	recv, err := receivePacket(respOrErr.Response.Body)
-	_ = respOrErr.Response.Body.Close()
+	if recvOrErr.error != nil {
+		return nil, recvOrErr.error
+	}
+	recv, err := receivePacket(recvOrErr.ReadCloser)
+	_ = recvOrErr.ReadCloser.Close()
 	if err != nil {
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
 	}
