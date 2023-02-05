@@ -82,9 +82,7 @@ func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, useIPv6 
 }
 
 func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrErr <-chan readerOrError, laddr string, id string, cancelReq context.CancelFunc) (*connInfo, error) {
-	defer sender.Close()
-
-	err := sendPacket(sender, []byte(fmt.Sprintf("%s|%s", laddr, id)))
+	err := sendPacket(sender, []byte(vbar(laddr, id)))
 	if err != nil {
 		select { // check if this is due to an error occurred during request opening
 		case recvOrErr := <-chRecvOrErr:
@@ -94,6 +92,12 @@ func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrE
 		default:
 		}
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
+	}
+
+	if ctx.Done() != nil {
+		defer sender.Close()
+	} else {
+		sender.Close()
 	}
 
 	defaultLogger.Infof("waiting for peer...")
@@ -113,8 +117,7 @@ func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrE
 	if err != nil {
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
 	}
-	tmp := strings.Split(string(recv), "|")
-	peerRaddr, peerLaddr := tmp[0], tmp[1]
+	peerRaddr, peerLaddr := vsplit(string(recv))
 
 	return &connInfo{laddr, peerLaddr, peerRaddr}, nil
 }
@@ -209,4 +212,12 @@ func connect(ctx context.Context, laddr, raddr string, chWin chan<- net.Conn, cc
 	case <-ctx.Done():
 		conn.Close()
 	}
+}
+
+func vbar(a, b string) string {
+	return fmt.Sprintf("%s|%s", a, b)
+}
+func vsplit(s string) (string, string) {
+	tmp := strings.Split(s, "|")
+	return tmp[0], tmp[1]
 }
