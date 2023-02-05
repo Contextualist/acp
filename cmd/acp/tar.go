@@ -107,7 +107,7 @@ func untarFile(hdr *tar.Header, f io.Reader, dest string) error {
 	switch hdr.Typeflag {
 	case tar.TypeDir:
 		return mkdir(to)
-	case tar.TypeReg, tar.TypeRegA, tar.TypeChar, tar.TypeBlock, tar.TypeFifo:
+	case tar.TypeReg, tar.TypeChar, tar.TypeBlock, tar.TypeFifo:
 		return writeNewFile(to, f, hdr.FileInfo().Mode())
 	case tar.TypeSymlink:
 		return writeNewSymbolicLink(to, hdr.Linkname)
