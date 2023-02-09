@@ -2,7 +2,9 @@ package pnet
 
 import (
 	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -82,6 +84,15 @@ func TestExchangeConnInfo(t *testing.T) {
 	rx, ry := <-chRaddr, <-chRaddr
 	if !(rx == ra && ry == rb) && !(rx == rb && ry == ra) {
 		t.Errorf("connInfo.peerRaddr from exchange not matched: expect: {%s,%s}, got: {%s,%s}", ra, rb, rx, ry)
+	}
+}
+
+func TestExchangeConnInfoError(t *testing.T) {
+	defaultLogger = &testLogger{t}
+	_, err := exchangeConnInfo(context.Background(), "http://localhost:40404", "test-exchange-err", false)
+	var opErr *net.OpError
+	if !errors.As(err, &opErr) || opErr.Op != "dial" {
+		t.Fatalf("exchangeConnInfo did not return a dial error on dial failure: %v", err)
 	}
 }
 

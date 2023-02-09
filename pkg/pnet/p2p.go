@@ -3,6 +3,7 @@ package pnet
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -72,7 +73,14 @@ func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, useIPv6 
 	}()
 	var laddr string
 	select {
-	case la := <-client.GetLAddr():
+	case la, ok := <-client.GetLAddr():
+		if !ok { // dial error
+			recvOrErr := <-chRecvOrErr
+			if recvOrErr.error != nil {
+				return nil, recvOrErr.error
+			}
+			return nil, errors.New("internal error: dial failed but HTTP request finished silently")
+		}
 		laddr = la.String()
 	case <-ctx.Done():
 		return nil, context.Canceled
@@ -84,13 +92,6 @@ func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, useIPv6 
 func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrErr <-chan readerOrError, laddr string, id string, cancelReq context.CancelFunc) (*connInfo, error) {
 	err := sendPacket(sender, []byte(vbar(laddr, id)))
 	if err != nil {
-		select { // check if this is due to an error occurred during request opening
-		case recvOrErr := <-chRecvOrErr:
-			if recvOrErr.error != nil {
-				return nil, recvOrErr.error
-			}
-		default:
-		}
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
 	}
 

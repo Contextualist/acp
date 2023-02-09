@@ -28,8 +28,8 @@ func NewHTTPClient(useIpv6 bool) *HTTPClient {
 			client.chLaddr <- c.LocalAddr()
 		} else {
 			defaultLogger.Debugf("pnet.HTTPClient.Transport.DialContext: %v", err)
-			client.chLaddr <- &net.TCPAddr{}
 		}
+		close(client.chLaddr)
 		return c, err
 	}
 	client.Client.Transport = tr
