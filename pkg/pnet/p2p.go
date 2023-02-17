@@ -3,12 +3,12 @@ package pnet
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -24,6 +24,15 @@ type (
 		laddr     string
 		peerLaddr string
 		peerRaddr string
+	}
+
+	selfInfo struct {
+		PriAddr  string `json:"priAddr"`
+		ChanName string `json:"chanName"`
+	}
+	peerInfo struct {
+		PriAddr string `json:"priAddr"`
+		PubAddr string `json:"pubAddr"`
 	}
 )
 
@@ -71,7 +80,7 @@ func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, useIPv6 
 		}
 		close(chRecvOrErr)
 	}()
-	var laddr string
+	info := selfInfo{ChanName: id}
 	select {
 	case la, ok := <-client.GetLAddr():
 		if !ok { // dial error
@@ -81,16 +90,17 @@ func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, useIPv6 
 			}
 			return nil, errors.New("internal error: dial failed but HTTP request finished silently")
 		}
-		laddr = la.String()
+		info.PriAddr = la.String()
 	case <-ctx.Done():
 		return nil, context.Canceled
 	}
 
-	return exchangeConnInfoProto(ctx, sendWriter, chRecvOrErr, laddr, id, cancelReq)
+	return exchangeConnInfoProto(ctx, sendWriter, chRecvOrErr, &info, cancelReq)
 }
 
-func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrErr <-chan readerOrError, laddr string, id string, cancelReq context.CancelFunc) (*connInfo, error) {
-	err := sendPacket(sender, []byte(vbar(laddr, id)))
+func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrErr <-chan readerOrError, sinfo *selfInfo, cancelReq context.CancelFunc) (*connInfo, error) {
+	infoEnc, _ := json.Marshal(sinfo)
+	err := sendPacket(sender, infoEnc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
 	}
@@ -118,9 +128,13 @@ func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrE
 	if err != nil {
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
 	}
-	peerRaddr, peerLaddr := vsplit(string(recv))
+	var pinfo peerInfo
+	err = json.Unmarshal(recv, &pinfo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse msg from bridge: %w", err)
+	}
 
-	return &connInfo{laddr, peerLaddr, peerRaddr}, nil
+	return &connInfo{sinfo.PriAddr, pinfo.PriAddr, pinfo.PubAddr}, nil
 }
 
 func rendezvous(ctx context.Context, info *connInfo) (conn net.Conn, err error) {
@@ -213,12 +227,4 @@ func connect(ctx context.Context, laddr, raddr string, chWin chan<- net.Conn, cc
 	case <-ctx.Done():
 		conn.Close()
 	}
-}
-
-func vbar(a, b string) string {
-	return fmt.Sprintf("%s|%s", a, b)
-}
-func vsplit(s string) (string, string) {
-	tmp := strings.Split(s, "|")
-	return tmp[0], tmp[1]
 }

@@ -2,6 +2,7 @@ package pnet
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -17,23 +18,28 @@ func TestExchangeConnInfoProto(t *testing.T) {
 	chRecvOrErr := make(chan readerOrError)
 	go func() { chRecvOrErr <- readerOrError{ReadCloser: downR}; close(chRecvOrErr) }()
 
-	laddr, id := "127.0.0.1:30001", "test-exchange-proto"
-	cInfo0 := connInfo{laddr, "127.0.0.1:30002", "80.80.80.80:30003"}
+	sinfo0 := selfInfo{"127.0.0.1:30001", "test-exchange-proto"}
+	cInfo0 := connInfo{sinfo0.PriAddr, "127.0.0.1:30002", "80.80.80.80:30003"}
 	go func() { // mock server protocol
 		clientData, err := receivePacket(upR)
 		if err != nil {
 			t.Errorf("error on receiving client data: %v", err)
 		}
-		if string(clientData) != vbar(laddr, id) {
-			t.Errorf("unexpected client data: %s", string(clientData))
+		var sinfo selfInfo
+		err = json.Unmarshal(clientData, &sinfo)
+		if err != nil {
+			t.Errorf("error on parsing client data: %v", err)
 		}
-		err = sendPacket(downW, []byte(vbar(cInfo0.peerRaddr, cInfo0.peerLaddr)))
+		if sinfo != sinfo0 {
+			t.Errorf("unexpected client data: %v", sinfo)
+		}
+		err = sendPacket(downW, must(json.Marshal(&peerInfo{cInfo0.peerLaddr, cInfo0.peerRaddr})))
 		if err != nil {
 			t.Errorf("error on replying to client: %v", err)
 		}
 	}()
 
-	cInfo, err := exchangeConnInfoProto(context.Background(), upW, chRecvOrErr, laddr, id, nil)
+	cInfo, err := exchangeConnInfoProto(context.Background(), upW, chRecvOrErr, &sinfo0, nil)
 	if err != nil {
 		t.Fatalf("exchange proto: %v", err)
 	}
@@ -46,25 +52,29 @@ func TestExchangeConnInfo(t *testing.T) {
 	defaultLogger = &testLogger{t}
 	id0 := "test-exchange"
 	ra, rb := "80.80.80.80:30011", "80.80.80.80:30012"
-	ch1, ch2 := make(chan string), make(chan string)
+	ch1, ch2 := make(chan []byte), make(chan []byte)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientData, err := receivePacket(r.Body)
 		if err != nil {
 			t.Errorf("error on receiving client data: %v", err)
 		}
-		laddr, id := vsplit(string(clientData))
-		if id != id0 {
-			t.Errorf("unexpected client id: %s", id)
+		var sinfo selfInfo
+		err = json.Unmarshal(clientData, &sinfo)
+		if err != nil {
+			t.Errorf("error on parsing client data: %v", err)
 		}
-		var rsp string
+		if sinfo.ChanName != id0 {
+			t.Errorf("unexpected client id: %s", sinfo.ChanName)
+		}
+		var rsp []byte
 		select {
-		case ch1 <- vbar(ra, laddr):
+		case ch1 <- must(json.Marshal(&peerInfo{sinfo.PriAddr, ra})):
 			rsp = <-ch2
 		case rsp = <-ch1:
-			ch2 <- vbar(rb, laddr)
+			ch2 <- must(json.Marshal(&peerInfo{sinfo.PriAddr, rb}))
 		}
 		w.WriteHeader(http.StatusOK)
-		err = sendPacket(w, []byte(rsp))
+		err = sendPacket(w, rsp)
 		if err != nil {
 			t.Errorf("error on replying to client: %v", err)
 		}
@@ -100,3 +110,10 @@ type testLogger struct{ t *testing.T }
 
 func (l *testLogger) Infof(format string, a ...any)  { l.t.Logf("pnet info: "+format, a...) }
 func (l *testLogger) Debugf(format string, a ...any) { l.t.Logf("pnet debug: "+format, a...) }
+
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
