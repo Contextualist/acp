@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 )
 
@@ -19,7 +20,7 @@ func TestExchangeConnInfoProto(t *testing.T) {
 	go func() { chRecvOrErr <- readerOrError{ReadCloser: downR}; close(chRecvOrErr) }()
 
 	sinfo0 := selfInfo{"127.0.0.1:30001", "test-exchange-proto"}
-	cInfo0 := connInfo{sinfo0.PriAddr, "127.0.0.1:30002", "80.80.80.80:30003"}
+	cInfo0 := connInfo{sinfo0.PriAddr, []string{"127.0.0.1:30002", "80.80.80.80:30003"}}
 	go func() { // mock server protocol
 		clientData, err := receivePacket(upR)
 		if err != nil {
@@ -33,7 +34,7 @@ func TestExchangeConnInfoProto(t *testing.T) {
 		if sinfo != sinfo0 {
 			t.Errorf("unexpected client data: %v", sinfo)
 		}
-		err = sendPacket(downW, must(json.Marshal(&peerInfo{cInfo0.peerLaddr, cInfo0.peerRaddr})))
+		err = sendPacket(downW, must(json.Marshal(&peerInfo{[]addrPair{{cInfo0.peerAddrs[0], cInfo0.peerAddrs[1]}}})))
 		if err != nil {
 			t.Errorf("error on replying to client: %v", err)
 		}
@@ -43,7 +44,7 @@ func TestExchangeConnInfoProto(t *testing.T) {
 	if err != nil {
 		t.Fatalf("exchange proto: %v", err)
 	}
-	if *cInfo != cInfo0 {
+	if !reflect.DeepEqual(*cInfo, cInfo0) {
 		t.Fatalf("connInfo from exchange proto not matched: expect: %+v, got: %+v", cInfo0, *cInfo)
 	}
 }
@@ -68,10 +69,10 @@ func TestExchangeConnInfo(t *testing.T) {
 		}
 		var rsp []byte
 		select {
-		case ch1 <- must(json.Marshal(&peerInfo{sinfo.PriAddr, ra})):
+		case ch1 <- must(json.Marshal(&peerInfo{[]addrPair{{sinfo.PriAddr, ra}}})):
 			rsp = <-ch2
 		case rsp = <-ch1:
-			ch2 <- must(json.Marshal(&peerInfo{sinfo.PriAddr, rb}))
+			ch2 <- must(json.Marshal(&peerInfo{[]addrPair{{sinfo.PriAddr, rb}}}))
 		}
 		w.WriteHeader(http.StatusOK)
 		err = sendPacket(w, rsp)
@@ -87,7 +88,7 @@ func TestExchangeConnInfo(t *testing.T) {
 		if err != nil {
 			t.Errorf("exchange: %v", err)
 		}
-		chRaddr <- cInfo.peerRaddr
+		chRaddr <- cInfo.peerAddrs[1]
 	}
 	go runClient()
 	go runClient()

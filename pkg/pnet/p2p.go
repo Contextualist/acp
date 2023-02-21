@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -22,17 +23,19 @@ type (
 
 	connInfo struct {
 		laddr     string
-		peerLaddr string
-		peerRaddr string
+		peerAddrs []string
 	}
 
 	selfInfo struct {
 		PriAddr  string `json:"priAddr"`
 		ChanName string `json:"chanName"`
 	}
-	peerInfo struct {
+	addrPair struct {
 		PriAddr string `json:"priAddr"`
 		PubAddr string `json:"pubAddr"`
+	}
+	peerInfo struct {
+		PeerAddrs []addrPair `json:"peerAddrs"`
 	}
 )
 
@@ -134,11 +137,18 @@ func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrE
 		return nil, fmt.Errorf("failed to parse msg from bridge: %w", err)
 	}
 
-	return &connInfo{sinfo.PriAddr, pinfo.PriAddr, pinfo.PubAddr}, nil
+	var addrs []string
+	for _, ap := range pinfo.PeerAddrs {
+		addrs = append(addrs, ap.PriAddr)
+		if ap.PubAddr != ap.PriAddr {
+			addrs = append(addrs, ap.PubAddr)
+		}
+	}
+	return &connInfo{sinfo.PriAddr, addrs}, nil
 }
 
 func rendezvous(ctx context.Context, info *connInfo) (conn net.Conn, err error) {
-	defaultLogger.Infof("rendezvous with %s | %s", info.peerLaddr, info.peerRaddr)
+	defaultLogger.Infof("rendezvous with %s", strings.Join(info.peerAddrs, " | "))
 	chWin := make(chan net.Conn)
 	l, err := Listen(ctx, "tcp", info.laddr)
 	if err != nil {
@@ -148,9 +158,8 @@ func rendezvous(ctx context.Context, info *connInfo) (conn net.Conn, err error) 
 	cc := make(chan struct{})
 	defer close(cc)
 	go accept(ctx, l, chWin, cc)
-	go connect(ctx, info.laddr, info.peerLaddr, chWin, cc)
-	if info.peerRaddr != info.peerLaddr {
-		go connect(ctx, info.laddr, info.peerRaddr, chWin, cc)
+	for _, peerAddr := range info.peerAddrs {
+		go connect(ctx, info.laddr, peerAddr, chWin, cc)
 	}
 
 	select {
