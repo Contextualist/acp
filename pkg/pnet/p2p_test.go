@@ -19,8 +19,8 @@ func TestExchangeConnInfoProto(t *testing.T) {
 	chRecvOrErr := make(chan readerOrError)
 	go func() { chRecvOrErr <- readerOrError{ReadCloser: downR}; close(chRecvOrErr) }()
 
-	sinfo0 := selfInfo{"127.0.0.1:30001", "test-exchange-proto"}
-	cInfo0 := connInfo{sinfo0.PriAddr, []string{"127.0.0.1:30002", "80.80.80.80:30003"}}
+	sinfo0 := selfInfo{"127.0.0.1:30001", "test-exchange-proto", 1}
+	cInfo0 := connInfo{sinfo0.PriAddr, []string{"127.0.0.1:30002", "80.80.80.80:30003"}, 1}
 	go func() { // mock server protocol
 		clientData, err := receivePacket(upR)
 		if err != nil {
@@ -34,7 +34,7 @@ func TestExchangeConnInfoProto(t *testing.T) {
 		if sinfo != sinfo0 {
 			t.Errorf("unexpected client data: %v", sinfo)
 		}
-		err = sendPacket(downW, must(json.Marshal(&peerInfo{[]addrPair{{cInfo0.peerAddrs[0], cInfo0.peerAddrs[1]}}})))
+		err = sendPacket(downW, must(json.Marshal(&peerInfo{[]addrPair{{cInfo0.peerAddrs[0], cInfo0.peerAddrs[1]}}, cInfo0.peerNPlan})))
 		if err != nil {
 			t.Errorf("error on replying to client: %v", err)
 		}
@@ -53,6 +53,7 @@ func TestExchangeConnInfo(t *testing.T) {
 	defaultLogger = &testLogger{t}
 	id0 := "test-exchange"
 	ra, rb := "80.80.80.80:30011", "80.80.80.80:30012"
+	nplan := 1
 	ch1, ch2 := make(chan []byte), make(chan []byte)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientData, err := receivePacket(r.Body)
@@ -69,10 +70,10 @@ func TestExchangeConnInfo(t *testing.T) {
 		}
 		var rsp []byte
 		select {
-		case ch1 <- must(json.Marshal(&peerInfo{[]addrPair{{sinfo.PriAddr, ra}}})):
+		case ch1 <- must(json.Marshal(&peerInfo{[]addrPair{{sinfo.PriAddr, ra}}, nplan})):
 			rsp = <-ch2
 		case rsp = <-ch1:
-			ch2 <- must(json.Marshal(&peerInfo{[]addrPair{{sinfo.PriAddr, rb}}}))
+			ch2 <- must(json.Marshal(&peerInfo{[]addrPair{{sinfo.PriAddr, rb}}, nplan}))
 		}
 		w.WriteHeader(http.StatusOK)
 		err = sendPacket(w, rsp)
@@ -84,7 +85,7 @@ func TestExchangeConnInfo(t *testing.T) {
 
 	chRaddr := make(chan string)
 	runClient := func() {
-		cInfo, err := exchangeConnInfo(context.Background(), server.URL, id0, false)
+		cInfo, err := exchangeConnInfo(context.Background(), server.URL, id0, 0, nplan, false)
 		if err != nil {
 			t.Errorf("exchange: %v", err)
 		}
@@ -100,7 +101,7 @@ func TestExchangeConnInfo(t *testing.T) {
 
 func TestExchangeConnInfoError(t *testing.T) {
 	defaultLogger = &testLogger{t}
-	_, err := exchangeConnInfo(context.Background(), "http://localhost:40404", "test-exchange-err", false)
+	_, err := exchangeConnInfo(context.Background(), "http://localhost:40404", "test-exchange-err", 0, 1, false)
 	var opErr *net.OpError
 	if !errors.As(err, &opErr) || opErr.Op != "dial" {
 		t.Fatalf("exchangeConnInfo did not return a dial error on dial failure: %v", err)

@@ -23,11 +23,15 @@ type Config struct {
 	PSK     string `json:"psk"`
 	Server  string `json:"server,omitempty"`
 	UseIPv6 bool   `json:"ipv6,omitempty"`
+	Ports   []int  `json:"ports,omitempty"`
 }
 
 func (conf *Config) applyDefault() {
 	if conf.Server == "" {
 		conf.Server = "https://acp.deno.dev"
+	}
+	if len(conf.Ports) == 0 {
+		conf.Ports = []int{0}
 	}
 }
 

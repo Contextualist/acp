@@ -4,7 +4,7 @@ import { serve, type ConnInfo } from "https://deno.land/std@0.171.0/http/server.
 interface ClientInfo {
   priAddr: string,
   chanName: string,
-  isAuxPort: boolean,
+  nPlan: number,
 }
 
 interface AddrPair {
@@ -14,9 +14,9 @@ interface AddrPair {
 
 interface ReplyInfo {
   peerAddrs: AddrPair[],
+  peerNPlan: number,
 }
 
-const auxPort = new Map<string, AddrPair[]>()
 
 async function handleExchangeV2(req: Request, connInfo: ConnInfo): Promise<Response> {
   if (req.method != "POST")
@@ -26,17 +26,12 @@ async function handleExchangeV2(req: Request, connInfo: ConnInfo): Promise<Respo
 
   const pubAddr = joinHostPort(connInfo.remoteAddr)
   const conn = req.body!.getReader({ mode: "byob" })
-  const { priAddr, chanName, isAuxPort = false }: ClientInfo = JSON.parse(
+  const { priAddr, chanName, nPlan = 1 }: ClientInfo = JSON.parse(
     new TextDecoder().decode(await receivePacket(conn))
   )
-  if (isAuxPort) {
-    if (!auxPort.has(chanName)) auxPort.set(chanName, [])
-    auxPort.get(chanName)!.push({ pubAddr, priAddr })
-    return new Response("")
-  }
-  const otherAP = auxPort.get(chanName) || []
   const reply: ReplyInfo = {
-    peerAddrs: [{ pubAddr, priAddr }, ...otherAP]
+    peerAddrs: [{ pubAddr, priAddr }],
+    peerNPlan: nPlan,
   }
   const x0 = JSON.stringify(reply)
   //console.log(`accepted from ${x0}`)
