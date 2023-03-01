@@ -11,7 +11,7 @@ type HTTPClient struct {
 	chLaddr chan net.Addr
 }
 
-func NewHTTPClient(useIpv6 bool) *HTTPClient {
+func NewHTTPClient(useIpv6 bool, laddr string) *HTTPClient {
 	client := &HTTPClient{
 		Client:  &http.Client{},
 		chLaddr: make(chan net.Addr, 1),
@@ -23,7 +23,7 @@ func NewHTTPClient(useIpv6 bool) *HTTPClient {
 		if useIpv6 {
 			network = "tcp6"
 		}
-		c, err := DialContext(ctx, network, ":0", addr)
+		c, err := DialContext(ctx, network, laddr, addr)
 		if err == nil {
 			client.chLaddr <- c.LocalAddr()
 		} else {

@@ -3,6 +3,7 @@ package pnet
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,22 @@ import (
 	"net/http"
 	"strings"
 	"time"
+)
+
+type (
+	// Logger interface accepted by pnet for internal logging
+	Logger interface {
+		Infof(format string, a ...any)
+		Debugf(format string, a ...any)
+	}
+
+	// Options for function HolePunching
+	HolePunchingOptions struct {
+		// Whether to use IPv6 instead of IPv4 for rendezvous
+		UseIPv6 bool
+		// Local port(s) to be used for rendezvous; default (nil) will be interpreted as {0}
+		Ports []int
+	}
 )
 
 type (
@@ -22,36 +39,69 @@ type (
 
 	connInfo struct {
 		laddr     string
-		peerLaddr string
-		peerRaddr string
+		peerAddrs []string
+		peerNPlan int
+	}
+
+	selfInfo struct {
+		PriAddr  string `json:"priAddr"`
+		ChanName string `json:"chanName"`
+		NPlan    int    `json:"nPlan"`
+	}
+	addrPair struct {
+		PriAddr string `json:"priAddr"`
+		PubAddr string `json:"pubAddr"`
+	}
+	peerInfo struct {
+		PeerAddrs []addrPair `json:"peerAddrs"`
+		PeerNPlan int        `json:"peerNPlan"`
 	}
 )
 
 const (
-	dialAttemptInterval = 500 * time.Millisecond
-	rendezvousTimeout   = 5 * time.Second
+	dialAttemptInterval = 300 * time.Millisecond
+	rendezvousTimeout   = 1300 * time.Millisecond
 )
-
-// Logger interface accepted by pnet for internal logging
-type Logger interface {
-	Infof(format string, a ...any)
-	Debugf(format string, a ...any)
-}
 
 var defaultLogger Logger
 
 // HolePunching negotiates via a rendezvous server with a peer with the same id to establish a connection.
-func HolePunching(ctx context.Context, bridgeURL string, id string, useIPv6 bool, l Logger) (conn net.Conn, err error) {
+func HolePunching(ctx context.Context, bridgeURL string, id string, isA bool, opts HolePunchingOptions, l Logger) (conn net.Conn, err error) {
 	defaultLogger = l
-	info, err := exchangeConnInfo(ctx, bridgeURL, id, useIPv6)
-	if err != nil {
-		return nil, err
+	if len(opts.Ports) == 0 {
+		opts.Ports = []int{0}
 	}
-	return rendezvous(ctx, info)
+	nplan := len(opts.Ports)
+	nA := 2
+	nB := 2
+	*tern(isA, &nA, &nB) = nplan
+	// Try out all nA x nB plans
+	for i := 0; i < nA; i++ {
+		for j := 0; j < nB; j++ {
+			q := tern(isA, i, j)
+			info, err := exchangeConnInfo(ctx, bridgeURL, id, opts.Ports[q], nplan, opts.UseIPv6)
+			if err != nil {
+				return nil, err
+			}
+			*tern(isA, &nB, &nA) = info.peerNPlan
+			ctx1, cancel := context.WithTimeout(ctx, rendezvousTimeout)
+			defer cancel()
+			conn, err := rendezvous(ctx1, info)
+			if err != nil {
+				if errors.Is(ctx1.Err(), context.DeadlineExceeded) {
+					defaultLogger.Infof("rendezvous timeout for %+v", info)
+					continue
+				}
+				return nil, err
+			}
+			return conn, nil
+		}
+	}
+	return nil, errors.New("all rendezvous attempts failed")
 }
 
-func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, useIPv6 bool) (*connInfo, error) {
-	client := NewHTTPClient(useIPv6)
+func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, port int, nplan int, useIPv6 bool) (*connInfo, error) {
+	client := NewHTTPClient(useIPv6, fmt.Sprintf(":%v", port))
 	sendReader, sendWriter := io.Pipe()
 	reqCtx, cancelReq := context.WithCancel(context.Background())
 	defer cancelReq()
@@ -71,7 +121,7 @@ func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, useIPv6 
 		}
 		close(chRecvOrErr)
 	}()
-	var laddr string
+	info := selfInfo{ChanName: id, NPlan: nplan}
 	select {
 	case la, ok := <-client.GetLAddr():
 		if !ok { // dial error
@@ -81,19 +131,21 @@ func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, useIPv6 
 			}
 			return nil, errors.New("internal error: dial failed but HTTP request finished silently")
 		}
-		laddr = la.String()
+		info.PriAddr = la.String()
 	case <-ctx.Done():
 		return nil, context.Canceled
 	}
 
-	return exchangeConnInfoProto(ctx, sendWriter, chRecvOrErr, laddr, id, cancelReq)
+	return exchangeConnInfoProto(ctx, sendWriter, chRecvOrErr, &info, cancelReq)
 }
 
-func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrErr <-chan readerOrError, laddr string, id string, cancelReq context.CancelFunc) (*connInfo, error) {
-	err := sendPacket(sender, []byte(vbar(laddr, id)))
+func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrErr <-chan readerOrError, sinfo *selfInfo, cancelReq context.CancelFunc) (*connInfo, error) {
+	infoEnc, _ := json.Marshal(sinfo)
+	err := sendPacket(sender, infoEnc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
 	}
+	defaultLogger.Debugf("send %s", infoEnc)
 
 	if ctx.Done() != nil {
 		defer sender.Close()
@@ -118,13 +170,25 @@ func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrE
 	if err != nil {
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
 	}
-	peerRaddr, peerLaddr := vsplit(string(recv))
+	defaultLogger.Debugf("recv %s", recv)
+	var pinfo peerInfo
+	err = json.Unmarshal(recv, &pinfo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse msg from bridge: %w", err)
+	}
 
-	return &connInfo{laddr, peerLaddr, peerRaddr}, nil
+	var addrs []string
+	for _, ap := range pinfo.PeerAddrs {
+		addrs = append(addrs, ap.PriAddr)
+		if ap.PubAddr != ap.PriAddr {
+			addrs = append(addrs, ap.PubAddr)
+		}
+	}
+	return &connInfo{sinfo.PriAddr, addrs, pinfo.PeerNPlan}, nil
 }
 
 func rendezvous(ctx context.Context, info *connInfo) (conn net.Conn, err error) {
-	defaultLogger.Infof("rendezvous with %s | %s", info.peerLaddr, info.peerRaddr)
+	defaultLogger.Infof("rendezvous with %s", strings.Join(info.peerAddrs, " | "))
 	chWin := make(chan net.Conn)
 	l, err := Listen(ctx, "tcp", info.laddr)
 	if err != nil {
@@ -134,17 +198,14 @@ func rendezvous(ctx context.Context, info *connInfo) (conn net.Conn, err error) 
 	cc := make(chan struct{})
 	defer close(cc)
 	go accept(ctx, l, chWin, cc)
-	go connect(ctx, info.laddr, info.peerLaddr, chWin, cc)
-	if info.peerRaddr != info.peerLaddr {
-		go connect(ctx, info.laddr, info.peerRaddr, chWin, cc)
+	for _, peerAddr := range info.peerAddrs {
+		go connect(ctx, info.laddr, peerAddr, chWin, cc)
 	}
 
 	select {
 	case conn = <-chWin:
-	case <-time.After(rendezvousTimeout):
-		return nil, fmt.Errorf("rendezvous timeout for %+v", info)
 	case <-ctx.Done():
-		return nil, context.Canceled
+		return nil, ctx.Err()
 	}
 	return conn, nil
 }
@@ -215,10 +276,9 @@ func connect(ctx context.Context, laddr, raddr string, chWin chan<- net.Conn, cc
 	}
 }
 
-func vbar(a, b string) string {
-	return fmt.Sprintf("%s|%s", a, b)
-}
-func vsplit(s string) (string, string) {
-	tmp := strings.Split(s, "|")
-	return tmp[0], tmp[1]
+func tern[T any](t bool, a T, b T) T {
+	if t {
+		return a
+	}
+	return b
 }

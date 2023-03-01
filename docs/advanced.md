@@ -2,7 +2,6 @@
 ## Advanced options
 
 `acp` stores config at `$HOME/.config/acp/config.json` (`%APPDATA%\acp\config.json` for Windows).
-In general, you need to make sure that all devices use the same config.
 After changing config on one device, run `acp --setup` to get the command for updating configs on other devices.
 
 List of configurable options:
@@ -10,6 +9,14 @@ List of configurable options:
 - `server` (default: `"https://acp.deno.dev"`): Endpoint for coordinating rendezvous
 - `ipv6` (default: `false`): Establish P2P connection using IPv6 instead of IPv4.
   Note that both ends of a connection need to use the same IP protocol.
+- `ports` (default: `[0]`): Local port(s) binding for connection rendezvous.
+  This is useful if the device is in a network that configured to allow inbound connections only from specific ports.
+  e.g.
+	- `[0]`: bind to a random port;
+	- `[9527]`: bind to port 9527;
+	- `[0,9527]`: bind to a random port and port 9527.
+
+Make sure that all devices share the same config for entries `server` and `ipv6`.
 
 
 ## Host the rendezvous service yourself
