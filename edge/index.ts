@@ -1,8 +1,53 @@
-import { serve } from "https://deno.land/std@0.171.0/http/server.ts";
+import { serve, type ConnInfo } from "https://deno.land/std@0.171.0/http/server.ts";
+
+
+interface ClientInfo {
+  priAddr: string,
+  chanName: string,
+  nPlan: number,
+}
+
+interface AddrPair {
+  pubAddr: string,
+  priAddr: string,
+}
+
+interface ReplyInfo {
+  peerAddrs: AddrPair[],
+  peerNPlan: number,
+}
+
+
+async function handleExchangeV2(req: Request, connInfo: ConnInfo): Promise<Response> {
+  if (req.method != "POST")
+    return new Response("Invalid method", { status: 405 })
+  if (req.headers.get("Content-Type") != "application/octet-stream")
+    return new Response("Invalid content type", { status: 415 })
+
+  const pubAddr = joinHostPort(connInfo.remoteAddr)
+  const conn = req.body!.getReader({ mode: "byob" })
+  const { priAddr, chanName, nPlan = 1 }: ClientInfo = JSON.parse(
+    new TextDecoder().decode(await receivePacket(conn))
+  )
+  const reply: ReplyInfo = {
+    peerAddrs: [{ pubAddr, priAddr }],
+    peerNPlan: nPlan,
+  }
+  const x0 = JSON.stringify(reply)
+  //console.log(`accepted from ${x0}`)
+
+  const x1 = await exchange(chanName, x0, conn)
+  if (x1 == "")
+    return new Response("")
+  //console.log(`exchanged, got ${x1}`)
+
+  const msg = marshallPacket(new TextEncoder().encode(x1))
+  return new Response(msg)
+}
 
 
 // (priAddr0|chanName) -> pubAddr1|priAddr1
-async function handleExchange(req: Request, connInfo: ConnInfo): Promise<Response> {
+async function handleExchangeV1(req: Request, connInfo: ConnInfo): Promise<Response> {
   if (req.method != "POST")
     return new Response("Invalid method", { status: 405 })
   if (req.headers.get("Content-Type") != "application/octet-stream")
@@ -117,8 +162,10 @@ async function handler(req: Request, connInfo: ConnInfo): Promise<Response> {
         `,
         { headers: { "Content-Type": "text/plain; charset=utf-8" } }
       )
+    case "/v2/exchange":
+      return await handleExchangeV2(req, connInfo)
     case "/exchange":
-      return await handleExchange(req, connInfo)
+      return await handleExchangeV1(req, connInfo)
     default:
       return new Response("Not found", { status: 404 })
   }

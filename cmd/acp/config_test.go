@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -31,6 +32,7 @@ func TestSetupWith(t *testing.T) {
 		PSK:     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 		Server:  "http://localhost:8000",
 		UseIPv6: true,
+		Ports:   []int{0, 9527},
 	}
 	conf0Bytes, _ := json.Marshal(&conf0)
 	if err := setup(string(conf0Bytes)); err != nil {
@@ -40,7 +42,7 @@ func TestSetupWith(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get config: %v", err)
 	}
-	if *conf != conf0 {
+	if !reflect.DeepEqual(*conf, conf0) {
 		t.Fatalf("Config does not match the intented setup value: expect: %+v, got: %+v", conf0, conf)
 	}
 

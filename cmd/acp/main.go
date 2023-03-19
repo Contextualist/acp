@@ -65,7 +65,17 @@ func main() {
 func transfer(ctx context.Context, conf *Config, filenames []string, loggerModel tea.Model) {
 	defer logger.End()
 
-	conn, err := pnet.HolePunching(ctx, conf.Server+"/exchange", conf.ID, conf.UseIPv6, logger)
+	conn, err := pnet.HolePunching(
+		ctx,
+		conf.Server+"/v2/exchange",
+		conf.ID,
+		len(filenames) > 0,
+		pnet.HolePunchingOptions{
+			UseIPv6: conf.UseIPv6,
+			Ports:   conf.Ports,
+		},
+		logger,
+	)
 	if errors.Is(err, context.Canceled) || !checkErr(err) {
 		return
 	}

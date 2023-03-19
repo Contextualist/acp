@@ -2,11 +2,13 @@ package pnet
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 )
 
@@ -17,27 +19,32 @@ func TestExchangeConnInfoProto(t *testing.T) {
 	chRecvOrErr := make(chan readerOrError)
 	go func() { chRecvOrErr <- readerOrError{ReadCloser: downR}; close(chRecvOrErr) }()
 
-	laddr, id := "127.0.0.1:30001", "test-exchange-proto"
-	cInfo0 := connInfo{laddr, "127.0.0.1:30002", "80.80.80.80:30003"}
+	sinfo0 := selfInfo{"127.0.0.1:30001", "test-exchange-proto", 1}
+	cInfo0 := connInfo{sinfo0.PriAddr, []string{"127.0.0.1:30002", "80.80.80.80:30003"}, 1}
 	go func() { // mock server protocol
 		clientData, err := receivePacket(upR)
 		if err != nil {
 			t.Errorf("error on receiving client data: %v", err)
 		}
-		if string(clientData) != vbar(laddr, id) {
-			t.Errorf("unexpected client data: %s", string(clientData))
+		var sinfo selfInfo
+		err = json.Unmarshal(clientData, &sinfo)
+		if err != nil {
+			t.Errorf("error on parsing client data: %v", err)
 		}
-		err = sendPacket(downW, []byte(vbar(cInfo0.peerRaddr, cInfo0.peerLaddr)))
+		if sinfo != sinfo0 {
+			t.Errorf("unexpected client data: %v", sinfo)
+		}
+		err = sendPacket(downW, must(json.Marshal(&peerInfo{[]addrPair{{cInfo0.peerAddrs[0], cInfo0.peerAddrs[1]}}, cInfo0.peerNPlan})))
 		if err != nil {
 			t.Errorf("error on replying to client: %v", err)
 		}
 	}()
 
-	cInfo, err := exchangeConnInfoProto(context.Background(), upW, chRecvOrErr, laddr, id, nil)
+	cInfo, err := exchangeConnInfoProto(context.Background(), upW, chRecvOrErr, &sinfo0, nil)
 	if err != nil {
 		t.Fatalf("exchange proto: %v", err)
 	}
-	if *cInfo != cInfo0 {
+	if !reflect.DeepEqual(*cInfo, cInfo0) {
 		t.Fatalf("connInfo from exchange proto not matched: expect: %+v, got: %+v", cInfo0, *cInfo)
 	}
 }
@@ -46,25 +53,30 @@ func TestExchangeConnInfo(t *testing.T) {
 	defaultLogger = &testLogger{t}
 	id0 := "test-exchange"
 	ra, rb := "80.80.80.80:30011", "80.80.80.80:30012"
-	ch1, ch2 := make(chan string), make(chan string)
+	nplan := 1
+	ch1, ch2 := make(chan []byte), make(chan []byte)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientData, err := receivePacket(r.Body)
 		if err != nil {
 			t.Errorf("error on receiving client data: %v", err)
 		}
-		laddr, id := vsplit(string(clientData))
-		if id != id0 {
-			t.Errorf("unexpected client id: %s", id)
+		var sinfo selfInfo
+		err = json.Unmarshal(clientData, &sinfo)
+		if err != nil {
+			t.Errorf("error on parsing client data: %v", err)
 		}
-		var rsp string
+		if sinfo.ChanName != id0 {
+			t.Errorf("unexpected client id: %s", sinfo.ChanName)
+		}
+		var rsp []byte
 		select {
-		case ch1 <- vbar(ra, laddr):
+		case ch1 <- must(json.Marshal(&peerInfo{[]addrPair{{sinfo.PriAddr, ra}}, nplan})):
 			rsp = <-ch2
 		case rsp = <-ch1:
-			ch2 <- vbar(rb, laddr)
+			ch2 <- must(json.Marshal(&peerInfo{[]addrPair{{sinfo.PriAddr, rb}}, nplan}))
 		}
 		w.WriteHeader(http.StatusOK)
-		err = sendPacket(w, []byte(rsp))
+		err = sendPacket(w, rsp)
 		if err != nil {
 			t.Errorf("error on replying to client: %v", err)
 		}
@@ -73,11 +85,11 @@ func TestExchangeConnInfo(t *testing.T) {
 
 	chRaddr := make(chan string)
 	runClient := func() {
-		cInfo, err := exchangeConnInfo(context.Background(), server.URL, id0, false)
+		cInfo, err := exchangeConnInfo(context.Background(), server.URL, id0, 0, nplan, false)
 		if err != nil {
 			t.Errorf("exchange: %v", err)
 		}
-		chRaddr <- cInfo.peerRaddr
+		chRaddr <- cInfo.peerAddrs[1]
 	}
 	go runClient()
 	go runClient()
@@ -89,7 +101,7 @@ func TestExchangeConnInfo(t *testing.T) {
 
 func TestExchangeConnInfoError(t *testing.T) {
 	defaultLogger = &testLogger{t}
-	_, err := exchangeConnInfo(context.Background(), "http://localhost:40404", "test-exchange-err", false)
+	_, err := exchangeConnInfo(context.Background(), "http://localhost:40404", "test-exchange-err", 0, 1, false)
 	var opErr *net.OpError
 	if !errors.As(err, &opErr) || opErr.Op != "dial" {
 		t.Fatalf("exchangeConnInfo did not return a dial error on dial failure: %v", err)
@@ -100,3 +112,10 @@ type testLogger struct{ t *testing.T }
 
 func (l *testLogger) Infof(format string, a ...any)  { l.t.Logf("pnet info: "+format, a...) }
 func (l *testLogger) Debugf(format string, a ...any) { l.t.Logf("pnet debug: "+format, a...) }
+
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
