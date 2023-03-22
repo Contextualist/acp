@@ -6,8 +6,10 @@ require (
 	github.com/charmbracelet/bubbles v0.14.0
 	github.com/charmbracelet/bubbletea v0.23.1
 	github.com/dustin/go-humanize v1.0.0
+	github.com/huin/goupnp v1.1.0
 	github.com/klauspost/pgzip v1.2.5
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5
+	golang.org/x/sync v0.1.0
 	golang.org/x/sys v0.4.0
 )
 
