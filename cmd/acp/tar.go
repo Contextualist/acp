@@ -30,6 +30,14 @@ func tarWalk(source string, t *tar.Writer) error {
 		if err != nil {
 			return err
 		}
+		var linkTarget string
+		if info.Mode()&os.ModeSymlink != 0 {
+			linkTarget, err = os.Readlink(fpath)
+			if err != nil {
+				return fmt.Errorf("%s: readlink: %v", fpath, err)
+			}
+			linkTarget = filepath.ToSlash(linkTarget)
+		}
 		var file io.ReadCloser
 		if info.Mode().IsRegular() {
 			file, err = os.Open(fpath)
@@ -38,7 +46,7 @@ func tarWalk(source string, t *tar.Writer) error {
 			}
 			defer file.Close()
 		}
-		err = addFile(t, info, relName, file)
+		err = addFile(t, info, relName, linkTarget, file)
 		if err != nil {
 			return fmt.Errorf("%s: writing: %v", fpath, err)
 		}
@@ -57,7 +65,7 @@ func nameInArchive(srcIsDir bool, src, fpath string) (string, error) {
 		}
 		// prepend the internal directory structure to the leaf name,
 		// and convert path separators to forward slashes as per spec
-		name = filepath.Join(filepath.ToSlash(dir), name)
+		name = filepath.ToSlash(filepath.Join(dir, name))
 	}
 	return name, nil
 }
@@ -71,17 +79,8 @@ func (fi namedFileInfo) Name() string {
 	return fi.name
 }
 
-func addFile(w *tar.Writer, info os.FileInfo, name string, file io.Reader) error {
-	var linkTarget string
-	if info.Mode()&os.ModeSymlink != 0 {
-		var err error
-		linkTarget, err = os.Readlink(name)
-		if err != nil {
-			return fmt.Errorf("%s: readlink: %v", name, err)
-		}
-	}
-
-	hdr, err := tar.FileInfoHeader(namedFileInfo{info, name}, filepath.ToSlash(linkTarget))
+func addFile(w *tar.Writer, info os.FileInfo, name string, linkTarget string, file io.Reader) error {
+	hdr, err := tar.FileInfoHeader(namedFileInfo{info, name}, linkTarget)
 	if err != nil {
 		return fmt.Errorf("%s: making header: %v", name, err)
 	}
@@ -103,16 +102,16 @@ func addFile(w *tar.Writer, info os.FileInfo, name string, file io.Reader) error
 }
 
 func untarFile(hdr *tar.Header, f io.Reader, dest string) error {
-	to := filepath.Join(dest, hdr.Name)
+	to := filepath.Join(dest, filepath.FromSlash(hdr.Name))
 	switch hdr.Typeflag {
 	case tar.TypeDir:
 		return mkdir(to)
 	case tar.TypeReg, tar.TypeChar, tar.TypeBlock, tar.TypeFifo:
 		return writeNewFile(to, f, hdr.FileInfo().Mode())
 	case tar.TypeSymlink:
-		return writeNewSymbolicLink(to, hdr.Linkname)
+		return writeNewSymbolicLink(to, filepath.FromSlash(hdr.Linkname))
 	case tar.TypeLink:
-		return writeNewHardLink(to, filepath.Join(dest, hdr.Linkname))
+		return writeNewHardLink(to, filepath.Join(dest, filepath.FromSlash(hdr.Linkname)))
 	case tar.TypeXGlobalHeader:
 		return nil // ignore the pax global header from git-generated tarballs
 	default:
