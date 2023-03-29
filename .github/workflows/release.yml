@@ -20,10 +20,9 @@ jobs:
 
       - run: git fetch --force --tags
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version: stable
-          cache: true
 
       - uses: goreleaser/goreleaser-action@v4
         with:
