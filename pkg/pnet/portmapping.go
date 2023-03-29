@@ -34,14 +34,15 @@ func addPortMapping(ctx context.Context, ports ...int) error {
 		return fmt.Errorf("failed to find a router client: %w", err)
 	}
 
+	var errs []error
 	for _, port := range ports {
 		err = client.AddPortMappingCtx(ctx, "", uint16(port), "TCP", uint16(port), client.LocalAddr().String(), true, "acp", 60)
 		if err != nil {
-			return fmt.Errorf("failed to add port mapping: %w", err)
+			errs = append(errs, fmt.Errorf("failed to add port mapping: %w", err))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func pickRouterClient(ctx context.Context) (routerClient, error) {
