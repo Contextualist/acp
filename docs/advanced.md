@@ -15,6 +15,8 @@ List of configurable options:
 	- `[0]`: bind to a random port;
 	- `[9527]`: bind to port 9527;
 	- `[0,9527]`: bind to a random port and port 9527.
+- `upnp` (default: `false`): Request UPnP port mapping from supported router.
+  This may not work for random port.
 
 Make sure that all devices share the same config for entries `server` and `ipv6`.
 

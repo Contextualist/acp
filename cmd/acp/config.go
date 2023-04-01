@@ -24,6 +24,7 @@ type Config struct {
 	Server  string `json:"server,omitempty"`
 	UseIPv6 bool   `json:"ipv6,omitempty"`
 	Ports   []int  `json:"ports,omitempty"`
+	UPnP    bool   `json:"upnp,omitempty"`
 }
 
 func (conf *Config) applyDefault() {

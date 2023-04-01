@@ -26,6 +26,8 @@ type (
 		UseIPv6 bool
 		// Local port(s) to be used for rendezvous; default (nil) will be interpreted as {0}
 		Ports []int
+		// Whether to try requesting UPnP port mapping from the router
+		UPnP bool
 	}
 )
 
@@ -71,6 +73,13 @@ func HolePunching(ctx context.Context, bridgeURL string, id string, isA bool, op
 	if len(opts.Ports) == 0 {
 		opts.Ports = []int{0}
 	}
+	if opts.UPnP {
+		err := addPortMapping(ctx, opts.Ports...)
+		if err != nil {
+			defaultLogger.Infof("failed to add port mapping: %v", err)
+		}
+	}
+
 	nplan := len(opts.Ports)
 	nA := 2
 	nB := 2

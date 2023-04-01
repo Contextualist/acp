@@ -73,6 +73,7 @@ func transfer(ctx context.Context, conf *Config, filenames []string, loggerModel
 		pnet.HolePunchingOptions{
 			UseIPv6: conf.UseIPv6,
 			Ports:   conf.Ports,
+			UPnP:    conf.UPnP,
 		},
 		logger,
 	)
