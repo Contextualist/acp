@@ -62,7 +62,7 @@ type (
 
 const (
 	dialAttemptInterval = 300 * time.Millisecond
-	rendezvousTimeout   = 1300 * time.Millisecond
+	rendezvousTimeout   = 1600 * time.Millisecond
 )
 
 var defaultLogger Logger
