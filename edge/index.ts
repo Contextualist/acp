@@ -1,5 +1,4 @@
-import { serve, type ConnInfo } from "https://deno.land/std@0.171.0/http/server.ts";
-
+type ConnInfo = Deno.ServeHandlerInfo
 
 interface ClientInfo {
   priAddr: string,
@@ -172,5 +171,5 @@ async function handler(req: Request, connInfo: ConnInfo): Promise<Response> {
 }
 
 
-serve(handler)
+Deno.serve(handler)
 
