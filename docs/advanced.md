@@ -41,3 +41,16 @@ By doing so, the only difference is that the service is running on a single endp
 2. Clone the repo and run `deno run --allow-net=:8000 edge/index.ts`
 3. (Recommended) Set up an HTTPS reverse proxy
 4. Set `server` field of the acp config files to your domain. (See the Advanced options section above)
+
+
+## Transfer from stdin to stdout
+
+Acp supports stdin as input and stdout as output, and they need to be used in pair.
+
+```bash
+# sender
+acp - < tmp-file
+
+# receiver
+acp -d - > tmp-file
+```

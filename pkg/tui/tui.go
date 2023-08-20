@@ -15,10 +15,13 @@ var (
 
 // RunProgram runs a tea.Program with a tea.Model as the initial model,
 // which can switch itself to other model in its Update func.
-func RunProgram(model tea.Model, cancel context.CancelFunc) tea.Model {
+func RunProgram(model tea.Model, cancel context.CancelFunc, useStderr bool) tea.Model {
 	var opts []tea.ProgramOption
 	if os.Getenv("CI") != "" { // disable TTY access during CI
 		opts = append(opts, tea.WithInput(nilReader{}))
+	}
+	if useStderr {
+		opts = append(opts, tea.WithOutput(os.Stderr))
 	}
 	programSingleton = tea.NewProgram(model, opts...)
 	userCancel = cancel

@@ -59,7 +59,7 @@ func main() {
 	logger = tui.NewLoggerControl(*debug)
 	loggerModel := tui.NewLoggerModel(logger)
 	go transfer(ctx, conf, filenames, loggerModel)
-	tui.RunProgram(loggerModel, userCancel)
+	tui.RunProgram(loggerModel, userCancel, *destination == "-")
 }
 
 func transfer(ctx context.Context, conf *Config, filenames []string, loggerModel tea.Model) {
