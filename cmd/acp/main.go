@@ -21,6 +21,7 @@ var (
 	debug       = flag.Bool("debug", false, "Enable debug logging")
 	doSetup     = flag.Bool("setup", false, "Initialize config or display current config")
 	doSetupWith = flag.String("setup-with", "", "Initialize config with the specified value")
+	doUpdate    = flag.Bool("update", false, "Update itself if a new version exists")
 	showVersion = flag.Bool("version", false, "Print version and exit")
 )
 
@@ -46,6 +47,10 @@ func main() {
 		}
 	}()
 
+	if *doUpdate {
+		checkErr(tryUpdate(ExeName, RepoName, fmt.Sprintf("v%s", buildTag)))
+		return
+	}
 	if *doSetup || *doSetupWith != "" {
 		checkErr(setup(*doSetupWith))
 		return
