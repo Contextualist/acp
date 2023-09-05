@@ -14,6 +14,16 @@ import (
 	"github.com/contextualist/acp/pkg/tui"
 )
 
+const UsageBrief = `Usage:
+  # sender
+  acp path/to/files
+
+  # receiver, to $(pwd)
+  acp
+  # or receive to/as specified target
+  acp -d path/to/target
+`
+
 var buildTag string // build-time injected
 
 var (
@@ -31,7 +41,7 @@ var exitStatement string
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "%s (%s)\nUsage:\n", os.Args[0], buildTag)
+		fmt.Fprintf(flag.CommandLine.Output(), "%s (%s)\n%s\nOptions:\n", os.Args[0], buildTag, UsageBrief)
 		flag.PrintDefaults()
 	}
 	flag.Parse()

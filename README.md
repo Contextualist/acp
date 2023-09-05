@@ -47,9 +47,10 @@ Then run `acp --setup` to generate an identity.
 # sender
 acp path/to/files
 
-# receiver
-acp # for receiving to pwd or
-acp -d path/to/dest
+# receiver, to $(pwd)
+acp
+# or receive to/as specified target
+acp -d path/to/target
 ```
 
 You can run the sender and receiver in arbitrary order.
