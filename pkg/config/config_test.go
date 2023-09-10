@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"encoding/json"
@@ -14,7 +14,7 @@ func TestSetup(t *testing.T) {
 	if _, err := getConfig(); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Config exists before creation; err: %v", err)
 	}
-	if err := setup(""); err != nil {
+	if err := Setup(""); err != nil {
 		t.Fatalf("Config initialization failed: %v", err)
 	}
 	conf, err := getConfig()
@@ -35,7 +35,7 @@ func TestSetupWith(t *testing.T) {
 		Ports:   []int{0, 9527},
 	}
 	conf0Bytes, _ := json.Marshal(&conf0)
-	if err := setup(string(conf0Bytes)); err != nil {
+	if err := Setup(string(conf0Bytes)); err != nil {
 		t.Fatalf("Config override failed: %v", err)
 	}
 	conf, err := getConfig()
@@ -46,7 +46,7 @@ func TestSetupWith(t *testing.T) {
 		t.Fatalf("Config does not match the intented setup value: expect: %+v, got: %+v", conf0, conf)
 	}
 
-	if err := setup(`{"ipv6":"true"}`); err == nil {
+	if err := Setup(`{"ipv6":"true"}`); err == nil {
 		t.Fatalf("Setup failed to catch an invalid input")
 	}
 }

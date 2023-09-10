@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"crypto/rand"
@@ -27,7 +27,7 @@ type Config struct {
 	UPnP    bool   `json:"upnp,omitempty"`
 }
 
-func (conf *Config) applyDefault() {
+func (conf *Config) ApplyDefault() {
 	if conf.Server == "" {
 		conf.Server = "https://acp.deno.dev"
 	}
@@ -38,7 +38,7 @@ func (conf *Config) applyDefault() {
 
 var configFilename = filepath.Join(userConfigDir(), "acp", "config.json")
 
-func setup(confStr string) (err error) {
+func Setup(confStr string) (err error) {
 	var conf *Config
 	if confStr != "" {
 		conf = &Config{}
@@ -64,7 +64,7 @@ func setup(confStr string) (err error) {
 		confBytes, _ := json.Marshal(&conf)
 		confStr = string(confBytes)
 	}
-	conf.applyDefault()
+	conf.ApplyDefault()
 	fmt.Printf(`acp is set up on this machine. To set up another machine, run the following command there
 (DO NOT share the command publicly as it contains encryption keys)
 	
@@ -79,7 +79,7 @@ If you already have the executable, run
 	return nil
 }
 
-func mustGetConfig() *Config {
+func MustGetConfig() *Config {
 	conf, err := getConfig()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

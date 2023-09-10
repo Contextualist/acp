@@ -10,6 +10,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/contextualist/acp/pkg/config"
 	"github.com/contextualist/acp/pkg/pnet"
 	"github.com/contextualist/acp/pkg/tui"
 )
@@ -62,13 +63,13 @@ func main() {
 		return
 	}
 	if *doSetup || *doSetupWith != "" {
-		checkErr(setup(*doSetupWith))
+		checkErr(config.Setup(*doSetupWith))
 		return
 	}
 
 	filenames := flag.Args()
-	conf := mustGetConfig()
-	conf.applyDefault()
+	conf := config.MustGetConfig()
+	conf.ApplyDefault()
 
 	ctx, userCancel := context.WithCancel(context.Background())
 	logger = tui.NewLoggerControl(*debug)
@@ -77,7 +78,7 @@ func main() {
 	tui.RunProgram(loggerModel, userCancel, *destination == "-")
 }
 
-func transfer(ctx context.Context, conf *Config, filenames []string, loggerModel tea.Model) {
+func transfer(ctx context.Context, conf *config.Config, filenames []string, loggerModel tea.Model) {
 	defer logger.End()
 
 	conn, err := pnet.HolePunching(
