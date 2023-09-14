@@ -4,20 +4,12 @@ import (
 	"archive/tar"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/klauspost/pgzip"
-	aead "github.com/shadowsocks/go-shadowsocks2/shadowaead"
 )
-
-func encrypted(conn net.Conn, psk []byte) (net.Conn, error) {
-	cipher, err := aead.Chacha20Poly1305(psk)
-	conn = aead.NewConn(conn, cipher)
-	return conn, err
-}
 
 func sendFiles(filenames []string, to io.WriteCloser) (err error) {
 	defer to.Close()

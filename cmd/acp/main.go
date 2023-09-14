@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/contextualist/acp/pkg/config"
 	"github.com/contextualist/acp/pkg/pnet"
+	"github.com/contextualist/acp/pkg/stream"
 	"github.com/contextualist/acp/pkg/tui"
 )
 
@@ -79,47 +79,48 @@ func main() {
 }
 
 func transfer(ctx context.Context, conf *config.Config, filenames []string, loggerModel tea.Model) {
+	pnet.SetLogger(logger)
+	stream.SetLogger(logger)
 	defer logger.End()
 
-	conn, err := pnet.HolePunching(
+	dialer, _ := stream.GetDialer("tcp_punch")
+	err := dialer.Init(*conf)
+	if !checkErr(err) {
+		return
+	}
+
+	sinfo := pnet.SelfInfo{ChanName: conf.ID}
+	dialer.SetInfo(&sinfo)
+	info, err := pnet.ExchangeConnInfo(
 		ctx,
 		conf.Server+"/v2/exchange",
-		conf.ID,
-		len(filenames) > 0,
-		pnet.HolePunchingOptions{
-			UseIPv6: conf.UseIPv6,
-			Ports:   conf.Ports,
-			UPnP:    conf.UPnP,
-		},
-		logger,
+		&sinfo,
+		conf.Ports[0],
+		conf.UseIPv6,
 	)
-	if errors.Is(err, context.Canceled) || !checkErr(err) {
-		return
-	}
-
-	psk, err := base64.StdEncoding.DecodeString(conf.PSK)
-	if !checkErr(err) {
-		return
-	}
-	conn, err = encrypted(conn, psk)
 	if !checkErr(err) {
 		return
 	}
 
-	stream, _ := conn.(io.ReadWriteCloser)
-	var status *tui.StatusControl
-	if !*debug {
-		status = tui.NewStatusControl()
-		stream = status.Monitor(stream)
-		logger.Next(tui.NewStatusModel(status))
-	}
-
+	var status interface{ Next(tea.Model) }
 	if len(filenames) > 0 {
+		var s io.WriteCloser
+		s, err = dialer.IntoSender(ctx, *info)
+		if !checkErr(err) {
+			return
+		}
+		s, status = monitor(s)
 		logger.Debugf("sending...")
-		err = sendFiles(filenames, stream)
+		err = sendFiles(filenames, s)
 	} else {
+		var s io.ReadCloser
+		s, err = dialer.IntoReceiver(ctx, *info)
+		if !checkErr(err) {
+			return
+		}
+		s, status = monitor(s)
 		logger.Debugf("receiving...")
-		err = receiveFiles(stream)
+		err = receiveFiles(s)
 	}
 
 	if !*debug {
@@ -128,10 +129,22 @@ func transfer(ctx context.Context, conf *config.Config, filenames []string, logg
 	checkErr(err)
 }
 
+func monitor[T io.Closer](s T) (T, *tui.StatusControl[T]) {
+	var status *tui.StatusControl[T]
+	if !*debug {
+		status = tui.NewStatusControl[T]()
+		s = status.Monitor(s)
+		logger.Next(tui.NewStatusModel(status))
+	}
+	return s, status
+}
+
 func checkErr(err error) bool {
 	if err == nil {
 		return true
 	}
-	exitStatement = err.Error()
+	if !errors.Is(err, context.Canceled) {
+		exitStatement = err.Error()
+	}
 	return false
 }

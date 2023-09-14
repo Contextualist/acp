@@ -28,7 +28,7 @@ type routerClient interface {
 	GetExternalIPAddress() (string, error)
 }
 
-func addPortMapping(ctx context.Context, ports ...int) error {
+func AddPortMapping(ctx context.Context, ports ...int) error {
 	client, err := pickRouterClient(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to find a router client: %w", err)

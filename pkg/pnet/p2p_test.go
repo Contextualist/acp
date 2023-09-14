@@ -19,14 +19,14 @@ func TestExchangeConnInfoProto(t *testing.T) {
 	chRecvOrErr := make(chan readerOrError)
 	go func() { chRecvOrErr <- readerOrError{ReadCloser: downR}; close(chRecvOrErr) }()
 
-	sinfo0 := selfInfo{"127.0.0.1:30001", "test-exchange-proto", 1}
-	cInfo0 := connInfo{sinfo0.PriAddr, []string{"127.0.0.1:30002", "80.80.80.80:30003"}, 1}
+	sinfo0 := SelfInfo{PriAddr: "127.0.0.1:30001", ChanName: "test-exchange-proto", NPlan: 1}
+	cInfo0 := PeerInfo{Laddr: sinfo0.PriAddr, PeerAddrs: []AddrPair{{"127.0.0.1:30002", "80.80.80.80:30003"}}, PeerNPlan: 1}
 	go func() { // mock server protocol
 		clientData, err := receivePacket(upR)
 		if err != nil {
 			t.Errorf("error on receiving client data: %v", err)
 		}
-		var sinfo selfInfo
+		var sinfo SelfInfo
 		err = json.Unmarshal(clientData, &sinfo)
 		if err != nil {
 			t.Errorf("error on parsing client data: %v", err)
@@ -34,7 +34,7 @@ func TestExchangeConnInfoProto(t *testing.T) {
 		if sinfo != sinfo0 {
 			t.Errorf("unexpected client data: %v", sinfo)
 		}
-		err = sendPacket(downW, must(json.Marshal(&peerInfo{[]addrPair{{cInfo0.peerAddrs[0], cInfo0.peerAddrs[1]}}, cInfo0.peerNPlan})))
+		err = sendPacket(downW, must(json.Marshal(&cInfo0)))
 		if err != nil {
 			t.Errorf("error on replying to client: %v", err)
 		}
@@ -45,7 +45,7 @@ func TestExchangeConnInfoProto(t *testing.T) {
 		t.Fatalf("exchange proto: %v", err)
 	}
 	if !reflect.DeepEqual(*cInfo, cInfo0) {
-		t.Fatalf("connInfo from exchange proto not matched: expect: %+v, got: %+v", cInfo0, *cInfo)
+		t.Fatalf("PeerInfo from exchange proto not matched: expect: %+v, got: %+v", cInfo0, *cInfo)
 	}
 }
 
@@ -60,7 +60,7 @@ func TestExchangeConnInfo(t *testing.T) {
 		if err != nil {
 			t.Errorf("error on receiving client data: %v", err)
 		}
-		var sinfo selfInfo
+		var sinfo SelfInfo
 		err = json.Unmarshal(clientData, &sinfo)
 		if err != nil {
 			t.Errorf("error on parsing client data: %v", err)
@@ -70,10 +70,10 @@ func TestExchangeConnInfo(t *testing.T) {
 		}
 		var rsp []byte
 		select {
-		case ch1 <- must(json.Marshal(&peerInfo{[]addrPair{{sinfo.PriAddr, ra}}, nplan})):
+		case ch1 <- must(json.Marshal(&PeerInfo{PeerAddrs: []AddrPair{{sinfo.PriAddr, ra}}, PeerNPlan: nplan})):
 			rsp = <-ch2
 		case rsp = <-ch1:
-			ch2 <- must(json.Marshal(&peerInfo{[]addrPair{{sinfo.PriAddr, rb}}, nplan}))
+			ch2 <- must(json.Marshal(&PeerInfo{PeerAddrs: []AddrPair{{sinfo.PriAddr, rb}}, PeerNPlan: nplan}))
 		}
 		w.WriteHeader(http.StatusOK)
 		err = sendPacket(w, rsp)
@@ -85,23 +85,23 @@ func TestExchangeConnInfo(t *testing.T) {
 
 	chRaddr := make(chan string)
 	runClient := func() {
-		cInfo, err := exchangeConnInfo(context.Background(), server.URL, id0, 0, nplan, false)
+		cInfo, err := ExchangeConnInfo(context.Background(), server.URL, &SelfInfo{ChanName: id0, NPlan: nplan}, 0, false)
 		if err != nil {
 			t.Errorf("exchange: %v", err)
 		}
-		chRaddr <- cInfo.peerAddrs[1]
+		chRaddr <- cInfo.PeerAddrs[0].PubAddr
 	}
 	go runClient()
 	go runClient()
 	rx, ry := <-chRaddr, <-chRaddr
 	if !(rx == ra && ry == rb) && !(rx == rb && ry == ra) {
-		t.Errorf("connInfo.peerRaddr from exchange not matched: expect: {%s,%s}, got: {%s,%s}", ra, rb, rx, ry)
+		t.Errorf("PeerInfo.peerRaddr from exchange not matched: expect: {%s,%s}, got: {%s,%s}", ra, rb, rx, ry)
 	}
 }
 
 func TestExchangeConnInfoError(t *testing.T) {
 	defaultLogger = &testLogger{t}
-	_, err := exchangeConnInfo(context.Background(), "http://localhost:40404", "test-exchange-err", 0, 1, false)
+	_, err := ExchangeConnInfo(context.Background(), "http://localhost:40404", &SelfInfo{ChanName: "test-exchange-err", NPlan: 1}, 0, false)
 	var opErr *net.OpError
 	if !errors.As(err, &opErr) || opErr.Op != "dial" {
 		t.Fatalf("exchangeConnInfo did not return a dial error on dial failure: %v", err)
