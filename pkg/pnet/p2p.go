@@ -32,7 +32,9 @@ type (
 	SelfInfo struct {
 		PriAddr  string `json:"priAddr"`
 		ChanName string `json:"chanName"`
-		NPlan    int    `json:"nPlan"`
+		NPlan    int    `json:"nPlan,omitempty"`
+		TSAddr   string `json:"tsAddr,omitempty"`
+		TSCap    uint   `json:"tsCap,omitempty"`
 	}
 	AddrPair struct {
 		PriAddr string `json:"priAddr"`
@@ -41,7 +43,9 @@ type (
 	PeerInfo struct {
 		Laddr     string
 		PeerAddrs []AddrPair `json:"peerAddrs"`
-		PeerNPlan int        `json:"peerNPlan"`
+		PeerNPlan int        `json:"peerNPlan,omitempty"`
+		TSAddr    string     `json:"tsAddr,omitempty"`
+		TSCap     uint       `json:"tsCap,omitempty"`
 	}
 )
 
