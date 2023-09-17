@@ -19,12 +19,13 @@ const (
 // Config defines the user-specific information for the transfer.
 // In general, it needs to be consistent across all devices of a user.
 type Config struct {
-	ID      string `json:"id"`
-	PSK     string `json:"psk"`
-	Server  string `json:"server,omitempty"`
-	UseIPv6 bool   `json:"ipv6,omitempty"`
-	Ports   []int  `json:"ports,omitempty"`
-	UPnP    bool   `json:"upnp,omitempty"`
+	ID       string   `json:"id"`
+	PSK      string   `json:"psk"`
+	Server   string   `json:"server,omitempty"`
+	UseIPv6  bool     `json:"ipv6,omitempty"`
+	Ports    []int    `json:"ports,omitempty"`
+	UPnP     bool     `json:"upnp,omitempty"`
+	Strategy []string `json:"strategy,omitempty"`
 }
 
 func (conf *Config) ApplyDefault() {
@@ -33,6 +34,9 @@ func (conf *Config) ApplyDefault() {
 	}
 	if len(conf.Ports) == 0 {
 		conf.Ports = []int{0}
+	}
+	if len(conf.Strategy) == 0 {
+		conf.Strategy = []string{"tcp_punch"}
 	}
 }
 

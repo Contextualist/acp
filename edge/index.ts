@@ -3,6 +3,7 @@ type ConnInfo = Deno.ServeHandlerInfo
 interface ClientInfo {
   priAddr: string,
   chanName: string,
+  strategy?: string[],
   nPlan?: number,
   tsAddr?: string,
   tsCap?: number,
@@ -15,6 +16,7 @@ interface AddrPair {
 
 interface ReplyInfo {
   peerAddrs: AddrPair[],
+  strategy?: string[],
   peerNPlan?: number,
   tsAddr?: string,
   tsCap?: number,

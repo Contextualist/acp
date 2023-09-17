@@ -83,14 +83,24 @@ func transfer(ctx context.Context, conf *config.Config, filenames []string, logg
 	stream.SetLogger(logger)
 	defer logger.End()
 
-	dialer, _ := stream.GetDialer("tcp_punch")
-	err := dialer.Init(*conf)
-	if !checkErr(err) {
+	sinfo := pnet.SelfInfo{ChanName: conf.ID}
+	strategy, errs := tryEach(conf.Strategy, func(name string) (s string, err error) {
+		var d stream.Dialer
+		if d, err = stream.GetDialer(name); err != nil {
+			return
+		}
+		if err = d.Init(*conf); err != nil {
+			return "", fmt.Errorf("failed to init dialer %s: %w", name, err)
+		}
+		d.SetInfo(&sinfo)
+		return name, nil
+	})
+	sinfo.Strategy = strategy
+	if len(strategy) == 0 {
+		checkErr(fmt.Errorf("none of the dialers from the strategy is available: %w", errors.Join(errs...)))
 		return
 	}
 
-	sinfo := pnet.SelfInfo{ChanName: conf.ID}
-	dialer.SetInfo(&sinfo)
 	info, err := pnet.ExchangeConnInfo(
 		ctx,
 		conf.Server+"/v2/exchange",
@@ -105,7 +115,8 @@ func transfer(ctx context.Context, conf *config.Config, filenames []string, logg
 	var status interface{ Next(tea.Model) }
 	if len(filenames) > 0 {
 		var s io.WriteCloser
-		s, err = dialer.IntoSender(ctx, *info)
+		strategyFinal := strategyConsensus(strategy, info.Strategy)
+		s, err = tryUntil(strategyFinal, func(dn string) (io.WriteCloser, error) { return must(stream.GetDialer(dn)).IntoSender(ctx, *info) })
 		if !checkErr(err) {
 			return
 		}
@@ -114,7 +125,8 @@ func transfer(ctx context.Context, conf *config.Config, filenames []string, logg
 		err = sendFiles(filenames, s)
 	} else {
 		var s io.ReadCloser
-		s, err = dialer.IntoReceiver(ctx, *info)
+		strategyFinal := strategyConsensus(info.Strategy, strategy)
+		s, err = tryUntil(strategyFinal, func(dn string) (io.ReadCloser, error) { return must(stream.GetDialer(dn)).IntoReceiver(ctx, *info) })
 		if !checkErr(err) {
 			return
 		}
