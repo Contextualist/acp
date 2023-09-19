@@ -59,4 +59,5 @@ The following steps take place to create such mappings and use them for P2P conn
 </p>
 
 *Still curious about the implementation?*
-You can find the rendezvous service in [edge/index.ts](../edge/index.ts) and the client-size of hole-punching in [pkg/pnet/p2p.go](../pkg/pnet/p2p.go).
+You can find the rendezvous service in [edge/index.ts](../edge/index.ts) and the client-side of hole-punching in [pkg/pnet/p2p.go](../pkg/pnet/p2p.go).
+BTW, you would probably find it interesting to read [Tailscale's exteneded discussion on NAT traversal](https://tailscale.com/blog/how-nat-traversal-works/).

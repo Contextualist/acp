@@ -15,6 +15,10 @@ List of configurable options:
 	- `[0]`: bind to a random port;
 	- `[9527]`: bind to port 9527;
 	- `[0,9527]`: bind to a random port and port 9527.
+- `strategy` (default: `["tcp_punch"]`): List of dialers for connection attempts, ordered by preference.
+  Available dialers:
+	- `tcp_punch`: TCP hole-punching
+	- `tailscale`: TCP over Tailnet / Taildrop (requires Tailscale running)
 - `upnp` (default: `false`): Request UPnP port mapping from supported router.
   This may not work for random port.
 
@@ -54,3 +58,10 @@ acp - < tmp-file
 # receiver
 acp -d - > tmp-file
 ```
+
+
+## Tailscale integration
+
+Tailscale has a more robust NAT traversal implementation and [distributed relay fallback](https://tailscale.com/blog/how-tailscale-works/#encrypted-tcp-relays-derp), so it is guarenteed to make connections in all cases. Acp can use Tailscale as a transport backend if you have Tailscale running on both side.
+
+If you have Tailscale running before installing acp, Tailscale support is automatically enabled for acp. Otherwise you can set `strategy: ["tailscale","tcp-punch"]` in config to enable Tailscale support after installing Tailscale.

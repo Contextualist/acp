@@ -5,7 +5,7 @@
 Highlights (aka "Why making another file-transfer tool?"):
 
 - Designed for personal use; no need to copy-paste a token / code for each transfer
-- Rendezvous service runs distributively on [serverless edge function](https://deno.com/deploy/docs),
+- Rendezvous service runs distributively on [serverless edge function](https://stackoverflow.blog/2023/02/23/how-edge-functions-move-your-back-end-close-to-your-front-end/),
   a robust solution with low latency worldwide. ([How does this work?](docs/mechanism.md))
 
 Other features:
@@ -15,6 +15,7 @@ Other features:
 - Compression (gzip)
 - Cross platform: Linux, macOS, Windows
 - Support transfering multiple files and directories
+- Optional [Tailscale integration](docs/advanced.md#tailscale-integration)
 
 See also [comparison table with similar tools](#similar-projects).
 
@@ -57,7 +58,7 @@ You can run the sender and receiver in arbitrary order.
 Whenever both sides are up and running, they will attempt to establish a P2P connection.
 If you see messages such as `rendezvous timeout`, at least one side is behind a firewall or a strict NAT that prohibits P2P connection.
 
-For advanced configuration and self-hosting (it's free & takes only 5 minutes!), check out [the docs here](docs/advanced.md).
+For advanced configuration and self-hosting, check out [the docs here](docs/advanced.md).
 
 
 ## Similar projects
@@ -68,7 +69,7 @@ For advanced configuration and self-hosting (it's free & takes only 5 minutes!),
 | LAN                                                          | O                                       | O    | O       | O                                        | O                                       |
 | WAN (local ↔︎ remote)                                         | O                                       | O    | O       | P                                        | O                                       |
 | WAN (remote ↔︎ remote)                                        |                                         | P    | O       | P                                        | O                                       |
-| relay                                                        |                                         |      |         | P                                        | O                                       |
+| relay                                                        |                                         |      | P       | P                                        | O                                       |
 | p2p                                                          |                                         |      | O       | O                                        | O                                       |
 | distributive                                                 |                                         |      | O       | O                                        |                                         |
 
@@ -86,3 +87,8 @@ Apart from the dependencies listed in [`go.mod`](go.mod), this project is also b
 - [**mholt/archiver**](https://github.com/mholt/archiver): tar/untar implementation
 - [**libp2p/go-reuseport**](https://github.com/libp2p/go-reuseport): address reuse for TCP hole-punching
 - [**egoist/bina**](https://github.com/egoist/bina): installation script
+- [**Tailscale**](https://tailscale.com), as one of the connection option, provides a painstaking implementation of NAT traversal and a distributive relay service
+
+## Disclaimer
+
+This project is not associated with Deno Land Inc. or Tailscale Inc.
