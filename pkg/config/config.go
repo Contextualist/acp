@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	tsapi "github.com/contextualist/acp/pkg/tailscale"
 )
 
 const (
@@ -49,6 +51,9 @@ func Setup(confStr string) (err error) {
 		if err = json.Unmarshal([]byte(confStr), conf); err != nil {
 			return err
 		}
+		if len(conf.Strategy) == 0 {
+			conf.Strategy = inferStrategy()
+		}
 		if err = setConfig(conf); err != nil {
 			return err
 		}
@@ -56,8 +61,9 @@ func Setup(confStr string) (err error) {
 		conf, err = getConfig()
 		if errors.Is(err, os.ErrNotExist) {
 			conf = &Config{
-				ID:  base64.StdEncoding.EncodeToString(randBytes(idLen)),
-				PSK: base64.StdEncoding.EncodeToString(randBytes(pskLen)),
+				ID:       base64.StdEncoding.EncodeToString(randBytes(idLen)),
+				PSK:      base64.StdEncoding.EncodeToString(randBytes(pskLen)),
+				Strategy: inferStrategy(),
 			}
 			if err = setConfig(conf); err != nil {
 				return err
@@ -118,6 +124,15 @@ func setConfig(conf *Config) error {
 	err = json.NewEncoder(configFile).Encode(conf)
 	if err != nil {
 		return fmt.Errorf("error writing config to %s: %v", configFilename, err)
+	}
+	return nil
+}
+
+func inferStrategy() []string {
+	_, iface, _ := tsapi.Interface()
+	_, err := tsapi.Path()
+	if iface != nil || err == nil {
+		return []string{"tailscale", "tcp_punch"}
 	}
 	return nil
 }

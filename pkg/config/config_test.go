@@ -28,11 +28,12 @@ func TestSetup(t *testing.T) {
 
 func TestSetupWith(t *testing.T) {
 	conf0 := Config{
-		ID:      "AAAAAAAA",
-		PSK:     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-		Server:  "http://localhost:8000",
-		UseIPv6: true,
-		Ports:   []int{0, 9527},
+		ID:       "AAAAAAAA",
+		PSK:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		Server:   "http://localhost:8000",
+		UseIPv6:  true,
+		Ports:    []int{0, 9527},
+		Strategy: []string{"tcp_punch"},
 	}
 	conf0Bytes, _ := json.Marshal(&conf0)
 	if err := Setup(string(conf0Bytes)); err != nil {
