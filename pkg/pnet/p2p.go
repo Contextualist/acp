@@ -19,16 +19,6 @@ type (
 		Infof(format string, a ...any)
 		Debugf(format string, a ...any)
 	}
-
-	// Options for function HolePunching
-	HolePunchingOptions struct {
-		// Whether to use IPv6 instead of IPv4 for rendezvous
-		UseIPv6 bool
-		// Local port(s) to be used for rendezvous; default (nil) will be interpreted as {0}
-		Ports []int
-		// Whether to try requesting UPnP port mapping from the router
-		UPnP bool
-	}
 )
 
 type (
@@ -39,24 +29,25 @@ type (
 		error
 	}
 
-	connInfo struct {
-		laddr     string
-		peerAddrs []string
-		peerNPlan int
+	SelfInfo struct {
+		PriAddr  string   `json:"priAddr"`
+		ChanName string   `json:"chanName"`
+		Strategy []string `json:"strategy,omitempty"`
+		NPlan    int      `json:"nPlan,omitempty"`
+		TSAddr   string   `json:"tsAddr,omitempty"`
+		TSCap    uint     `json:"tsCap,omitempty"`
 	}
-
-	selfInfo struct {
-		PriAddr  string `json:"priAddr"`
-		ChanName string `json:"chanName"`
-		NPlan    int    `json:"nPlan"`
-	}
-	addrPair struct {
+	AddrPair struct {
 		PriAddr string `json:"priAddr"`
 		PubAddr string `json:"pubAddr"`
 	}
-	peerInfo struct {
-		PeerAddrs []addrPair `json:"peerAddrs"`
-		PeerNPlan int        `json:"peerNPlan"`
+	PeerInfo struct {
+		Laddr     string
+		PeerAddrs []AddrPair `json:"peerAddrs"`
+		Strategy  []string   `json:"strategy,omitempty"`
+		PeerNPlan int        `json:"peerNPlan,omitempty"`
+		TSAddr    string     `json:"tsAddr,omitempty"`
+		TSCap     uint       `json:"tsCap,omitempty"`
 	}
 )
 
@@ -67,49 +58,13 @@ const (
 
 var defaultLogger Logger
 
-// HolePunching negotiates via a rendezvous server with a peer with the same id to establish a connection.
-func HolePunching(ctx context.Context, bridgeURL string, id string, isA bool, opts HolePunchingOptions, l Logger) (conn net.Conn, err error) {
+// SetLogger sets the internal logger for pnet
+func SetLogger(l Logger) {
 	defaultLogger = l
-	if len(opts.Ports) == 0 {
-		opts.Ports = []int{0}
-	}
-	if opts.UPnP {
-		err := addPortMapping(ctx, opts.Ports...)
-		if err != nil {
-			defaultLogger.Infof("failed to add port mapping: %v", err)
-		}
-	}
-
-	nplan := len(opts.Ports)
-	nA := 2
-	nB := 2
-	*tern(isA, &nA, &nB) = nplan
-	// Try out all nA x nB plans
-	for i := 0; i < nA; i++ {
-		for j := 0; j < nB; j++ {
-			q := tern(isA, i, j)
-			info, err := exchangeConnInfo(ctx, bridgeURL, id, opts.Ports[q], nplan, opts.UseIPv6)
-			if err != nil {
-				return nil, err
-			}
-			*tern(isA, &nB, &nA) = info.peerNPlan
-			ctx1, cancel := context.WithTimeout(ctx, rendezvousTimeout)
-			defer cancel()
-			conn, err := rendezvous(ctx1, info)
-			if err != nil {
-				if errors.Is(ctx1.Err(), context.DeadlineExceeded) {
-					defaultLogger.Infof("rendezvous timeout for %+v", info)
-					continue
-				}
-				return nil, err
-			}
-			return conn, nil
-		}
-	}
-	return nil, errors.New("all rendezvous attempts failed")
 }
 
-func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, port int, nplan int, useIPv6 bool) (*connInfo, error) {
+// ExchangeConnInfo exchanges oneself's info for the peer's info, which can be used to establish a connection
+func ExchangeConnInfo(ctx context.Context, bridgeURL string, info *SelfInfo, port int, useIPv6 bool) (*PeerInfo, error) {
 	client := NewHTTPClient(useIPv6, fmt.Sprintf(":%v", port))
 	sendReader, sendWriter := io.Pipe()
 	reqCtx, cancelReq := context.WithCancel(context.Background())
@@ -130,7 +85,6 @@ func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, port int
 		}
 		close(chRecvOrErr)
 	}()
-	info := selfInfo{ChanName: id, NPlan: nplan}
 	select {
 	case la, ok := <-client.GetLAddr():
 		if !ok { // dial error
@@ -145,10 +99,10 @@ func exchangeConnInfo(ctx context.Context, bridgeURL string, id string, port int
 		return nil, context.Canceled
 	}
 
-	return exchangeConnInfoProto(ctx, sendWriter, chRecvOrErr, &info, cancelReq)
+	return exchangeConnInfoProto(ctx, sendWriter, chRecvOrErr, info, cancelReq)
 }
 
-func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrErr <-chan readerOrError, sinfo *selfInfo, cancelReq context.CancelFunc) (*connInfo, error) {
+func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrErr <-chan readerOrError, sinfo *SelfInfo, cancelReq context.CancelFunc) (*PeerInfo, error) {
 	infoEnc, _ := json.Marshal(sinfo)
 	err := sendPacket(sender, infoEnc)
 	if err != nil {
@@ -180,26 +134,45 @@ func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrE
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
 	}
 	defaultLogger.Debugf("recv %s", recv)
-	var pinfo peerInfo
+	var pinfo PeerInfo
 	err = json.Unmarshal(recv, &pinfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse msg from bridge: %w", err)
 	}
 
+	pinfo.Laddr = sinfo.PriAddr
+	return &pinfo, nil
+}
+
+func flattenAddrs(aps []AddrPair) []string {
 	var addrs []string
-	for _, ap := range pinfo.PeerAddrs {
+	for _, ap := range aps {
 		addrs = append(addrs, ap.PriAddr)
 		if ap.PubAddr != ap.PriAddr {
 			addrs = append(addrs, ap.PubAddr)
 		}
 	}
-	return &connInfo{sinfo.PriAddr, addrs, pinfo.PeerNPlan}, nil
+	return addrs
 }
 
-func rendezvous(ctx context.Context, info *connInfo) (conn net.Conn, err error) {
-	defaultLogger.Infof("rendezvous with %s", strings.Join(info.peerAddrs, " | "))
+// RendezvousWithTimeout performs simultaneous connection opening for TCP hole punching, with `rendezvousTimeout`
+func RendezvousWithTimeout(ctx context.Context, laddr string, peerAddrs []AddrPair) (conn net.Conn, err error) {
+	ctx1, cancel := context.WithTimeout(ctx, rendezvousTimeout)
+	defer cancel()
+	conn, err = rendezvous(ctx1, laddr, flattenAddrs(peerAddrs))
+	if err != nil {
+		if errors.Is(ctx1.Err(), context.DeadlineExceeded) {
+			defaultLogger.Infof("rendezvous timeout for %v -> %v", laddr, peerAddrs)
+		}
+		return nil, err
+	}
+	return conn, nil
+}
+
+func rendezvous(ctx context.Context, laddr string, peerAddrs []string) (conn net.Conn, err error) {
+	defaultLogger.Infof("rendezvous with %s", strings.Join(peerAddrs, " | "))
 	chWin := make(chan net.Conn)
-	l, err := Listen(ctx, "tcp", info.laddr)
+	l, err := Listen(ctx, "tcp", laddr)
 	if err != nil {
 		return nil, fmt.Errorf("unable to set up rendezvous: %w", err)
 	}
@@ -207,8 +180,8 @@ func rendezvous(ctx context.Context, info *connInfo) (conn net.Conn, err error) 
 	cc := make(chan struct{})
 	defer close(cc)
 	go accept(ctx, l, chWin, cc)
-	for _, peerAddr := range info.peerAddrs {
-		go connect(ctx, info.laddr, peerAddr, chWin, cc)
+	for _, peerAddr := range peerAddrs {
+		go connect(ctx, laddr, peerAddr, chWin, cc)
 	}
 
 	select {
@@ -283,11 +256,4 @@ func connect(ctx context.Context, laddr, raddr string, chWin chan<- net.Conn, cc
 	case <-ctx.Done():
 		conn.Close()
 	}
-}
-
-func tern[T any](t bool, a T, b T) T {
-	if t {
-		return a
-	}
-	return b
 }

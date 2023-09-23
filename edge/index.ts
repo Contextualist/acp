@@ -3,7 +3,10 @@ type ConnInfo = Deno.ServeHandlerInfo
 interface ClientInfo {
   priAddr: string,
   chanName: string,
-  nPlan: number,
+  strategy?: string[],
+  nPlan?: number,
+  tsAddr?: string,
+  tsCap?: number,
 }
 
 interface AddrPair {
@@ -13,7 +16,10 @@ interface AddrPair {
 
 interface ReplyInfo {
   peerAddrs: AddrPair[],
-  peerNPlan: number,
+  strategy?: string[],
+  peerNPlan?: number,
+  tsAddr?: string,
+  tsCap?: number,
 }
 
 
@@ -25,12 +31,13 @@ async function handleExchangeV2(req: Request, connInfo: ConnInfo): Promise<Respo
 
   const pubAddr = joinHostPort(connInfo.remoteAddr)
   const conn = req.body!.getReader({ mode: "byob" })
-  const { priAddr, chanName, nPlan = 1 }: ClientInfo = JSON.parse(
+  const { priAddr, chanName, nPlan = 1, ...otherInfo }: ClientInfo = JSON.parse(
     new TextDecoder().decode(await receivePacket(conn))
   )
   const reply: ReplyInfo = {
     peerAddrs: [{ pubAddr, priAddr }],
     peerNPlan: nPlan,
+    ...otherInfo,
   }
   const x0 = JSON.stringify(reply)
   //console.log(`accepted from ${x0}`)

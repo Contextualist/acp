@@ -50,6 +50,7 @@ func tryUpdate(exe string, repo string, currTag string) error {
 	if err != nil {
 		return fmt.Errorf("failed to update: %w", err)
 	}
+	fmt.Println("acp has been updated")
 	return nil
 }
 

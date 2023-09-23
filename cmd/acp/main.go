@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,7 +9,9 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/contextualist/acp/pkg/config"
 	"github.com/contextualist/acp/pkg/pnet"
+	"github.com/contextualist/acp/pkg/stream"
 	"github.com/contextualist/acp/pkg/tui"
 )
 
@@ -62,13 +63,13 @@ func main() {
 		return
 	}
 	if *doSetup || *doSetupWith != "" {
-		checkErr(setup(*doSetupWith))
+		checkErr(config.Setup(*doSetupWith))
 		return
 	}
 
 	filenames := flag.Args()
-	conf := mustGetConfig()
-	conf.applyDefault()
+	conf := config.MustGetConfig()
+	conf.ApplyDefault()
 
 	ctx, userCancel := context.WithCancel(context.Background())
 	logger = tui.NewLoggerControl(*debug)
@@ -77,48 +78,61 @@ func main() {
 	tui.RunProgram(loggerModel, userCancel, *destination == "-")
 }
 
-func transfer(ctx context.Context, conf *Config, filenames []string, loggerModel tea.Model) {
+func transfer(ctx context.Context, conf *config.Config, filenames []string, loggerModel tea.Model) {
+	pnet.SetLogger(logger)
+	stream.SetLogger(logger)
 	defer logger.End()
 
-	conn, err := pnet.HolePunching(
+	sinfo := pnet.SelfInfo{ChanName: conf.ID}
+	strategy, errs := tryEach(conf.Strategy, func(name string) (s string, err error) {
+		var d stream.Dialer
+		if d, err = stream.GetDialer(name); err != nil {
+			return
+		}
+		if err = d.Init(*conf); err != nil {
+			return "", fmt.Errorf("failed to init dialer %s: %w", name, err)
+		}
+		d.SetInfo(&sinfo)
+		return name, nil
+	})
+	sinfo.Strategy = strategy
+	if len(strategy) == 0 {
+		checkErr(fmt.Errorf("none of the dialers from the strategy is available: %w", errors.Join(errs...)))
+		return
+	}
+
+	info, err := pnet.ExchangeConnInfo(
 		ctx,
 		conf.Server+"/v2/exchange",
-		conf.ID,
-		len(filenames) > 0,
-		pnet.HolePunchingOptions{
-			UseIPv6: conf.UseIPv6,
-			Ports:   conf.Ports,
-			UPnP:    conf.UPnP,
-		},
-		logger,
+		&sinfo,
+		conf.Ports[0],
+		conf.UseIPv6,
 	)
-	if errors.Is(err, context.Canceled) || !checkErr(err) {
-		return
-	}
-
-	psk, err := base64.StdEncoding.DecodeString(conf.PSK)
-	if !checkErr(err) {
-		return
-	}
-	conn, err = encrypted(conn, psk)
 	if !checkErr(err) {
 		return
 	}
 
-	stream, _ := conn.(io.ReadWriteCloser)
-	var status *tui.StatusControl
-	if !*debug {
-		status = tui.NewStatusControl()
-		stream = status.Monitor(stream)
-		logger.Next(tui.NewStatusModel(status))
-	}
-
+	var status interface{ Next(tea.Model) }
 	if len(filenames) > 0 {
+		var s io.WriteCloser
+		strategyFinal := strategyConsensus(strategy, info.Strategy)
+		s, err = tryUntil(strategyFinal, func(dn string) (io.WriteCloser, error) { return must(stream.GetDialer(dn)).IntoSender(ctx, *info) })
+		if !checkErr(err) {
+			return
+		}
+		s, status = monitor(s)
 		logger.Debugf("sending...")
-		err = sendFiles(filenames, stream)
+		err = sendFiles(filenames, s)
 	} else {
+		var s io.ReadCloser
+		strategyFinal := strategyConsensus(info.Strategy, strategy)
+		s, err = tryUntil(strategyFinal, func(dn string) (io.ReadCloser, error) { return must(stream.GetDialer(dn)).IntoReceiver(ctx, *info) })
+		if !checkErr(err) {
+			return
+		}
+		s, status = monitor(s)
 		logger.Debugf("receiving...")
-		err = receiveFiles(stream)
+		err = receiveFiles(s)
 	}
 
 	if !*debug {
@@ -127,10 +141,22 @@ func transfer(ctx context.Context, conf *Config, filenames []string, loggerModel
 	checkErr(err)
 }
 
+func monitor[T io.Closer](s T) (T, *tui.StatusControl[T]) {
+	var status *tui.StatusControl[T]
+	if !*debug {
+		status = tui.NewStatusControl[T]()
+		s = status.Monitor(s)
+		logger.Next(tui.NewStatusModel(status))
+	}
+	return s, status
+}
+
 func checkErr(err error) bool {
 	if err == nil {
 		return true
 	}
-	exitStatement = err.Error()
+	if !errors.Is(err, context.Canceled) {
+		exitStatement = err.Error()
+	}
 	return false
 }
