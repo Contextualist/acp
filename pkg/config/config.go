@@ -19,7 +19,6 @@ const (
 )
 
 // Config defines the user-specific information for the transfer.
-// In general, it needs to be consistent across all devices of a user.
 type Config struct {
 	ID       string   `json:"id"`
 	PSK      string   `json:"psk"`
@@ -39,6 +38,16 @@ func (conf *Config) ApplyDefault() {
 	}
 	if len(conf.Strategy) == 0 {
 		conf.Strategy = []string{"tcp_punch"}
+	}
+}
+
+// Export returns a Config with only the fields that are common to all devices of a user.
+func (conf *Config) Export() *Config {
+	return &Config{
+		ID:      conf.ID,
+		PSK:     conf.PSK,
+		Server:  conf.Server,
+		UseIPv6: conf.UseIPv6,
 	}
 }
 
@@ -71,7 +80,7 @@ func Setup(confStr string) (err error) {
 		} else if err != nil {
 			return err
 		}
-		confBytes, _ := json.Marshal(&conf)
+		confBytes, _ := json.Marshal(conf.Export())
 		confStr = string(confBytes)
 	}
 	conf.ApplyDefault()
