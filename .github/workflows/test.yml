@@ -74,12 +74,11 @@ jobs:
     timeout-minutes: 5
     steps:
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version: stable
-          cache: true
 
       - uses: denoland/setup-deno@v1
         with:
