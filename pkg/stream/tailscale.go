@@ -144,8 +144,8 @@ func (d *taildrop) Init(_ config.Config) error {
 		defaultLogger.Debugf(err.Error())
 		return ErrNotAvailable
 	}
-	d.tsIP = sf.TsIPs[0]
-	if runtime.GOOS == "linux" && sf.Tun {
+	d.tsIP = (*sf.TsIPs)[0]
+	if runtime.GOOS == "linux" && *sf.Tun {
 		// heuristic test if tailscaled is running as root
 		defaultLogger.Debugf("will be running tailscale as root")
 		d.cli.Prefix = append([]string{"sudo"}, d.cli.Prefix...)

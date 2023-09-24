@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"reflect"
 	"runtime"
 )
 
@@ -35,8 +36,8 @@ func (ts *TSCli) run(ctx context.Context, args ...string) *exec.Cmd {
 }
 
 type TSStatus struct {
-	Tun   bool     `json:"TUN"`
-	TsIPs []string `json:"TailscaleIPs"`
+	Tun   *bool     `json:"TUN"`
+	TsIPs *[]string `json:"TailscaleIPs"`
 }
 
 func (ts *TSCli) RunStatus(ctx context.Context) (*TSStatus, error) {
@@ -49,6 +50,15 @@ func (ts *TSCli) RunStatus(ctx context.Context) (*TSStatus, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse tailscale status: %w", err)
 	}
+
+	// Ensure that all fields are present
+	fields := reflect.ValueOf(&r).Elem()
+	for i := 0; i < fields.NumField(); i++ {
+		if fields.Field(i).IsNil() {
+			return nil, fmt.Errorf("tailscale status missing required fields %q", fields.Type().Field(i).Tag.Get("json"))
+		}
+	}
+
 	return &r, nil
 }
 
