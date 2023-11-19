@@ -43,3 +43,8 @@ changelog:
       - '^test:'
       - '^chore:'
 
+release:
+  header: |
+    To update, run
+
+    > acp --update
