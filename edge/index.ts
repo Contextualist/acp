@@ -77,7 +77,8 @@ async function handleExchangeV1(req: Request, connInfo: ConnInfo): Promise<Respo
 }
 
 
-const inbox = new Map<string, {xa: string, xb_resolve: (xb: string) => void}>()
+type ResolveStr = (x: string) => void
+const inbox = new Map<string, {xa: string, xb_resolve: ResolveStr}>()
 
 async function exchange(name: string, x0: string, conn: ReadableStreamBYOBReader): Promise<string> {
   if (inbox.has(name)) { // the other party has set up an in-memory exchange
@@ -89,7 +90,7 @@ async function exchange(name: string, x0: string, conn: ReadableStreamBYOBReader
 
   const [x1, source] = await Promise.any([
     // attempt to set up an in-memory exchange
-    new Promise((resolve) => {
+    new Promise((resolve: ResolveStr) => {
       inbox.set(name, { xa: x0, xb_resolve: resolve })
     }).then((x) => [x, "in-memory"]),
     // attempt to do cross-regional exchange
@@ -114,7 +115,7 @@ async function exchangeViaBroadcastChannel(name: string, x0: string): Promise<st
   const channel = new BroadcastChannel(name)
   channels.set(name, channel)
   channel.postMessage(x0) // if the other party has already subscribed
-  const x1 = await (new Promise((resolve) => {
+  const x1 = await (new Promise((resolve: ResolveStr) => {
     channel.onmessage = (event: MessageEvent) => resolve(event.data)
   }))
   channel.postMessage(x0) // if the other party subscribes after the first post
@@ -136,14 +137,14 @@ function joinHostPort(addr: Deno.NetAddr): string {
 
 
 async function receivePacket(conn: ReadableStreamBYOBReader): Promise<Uint8Array> {
-  let buf = (await conn.read(new Uint8Array(2))).value
+  let buf = (await conn.read(new Uint8Array(2))).value!
   const lenCap = 1e3
   const plen = (buf[0]<<8) | buf[1] // uint16, BE
   if (plen == 0 || plen > lenCap) {
     console.error(`received suspicious packet header declearing len=${plen}`)
     throw new Deno.errors.InvalidData
   }
-  buf = (await conn.read(new Uint8Array(plen))).value
+  buf = (await conn.read(new Uint8Array(plen))).value!
   return buf
 }
 
@@ -151,7 +152,7 @@ async function receivePacket(conn: ReadableStreamBYOBReader): Promise<Uint8Array
 function marshallPacket(data: Uint8Array): Uint8Array {
   const l = data.length
   let p = new Uint8Array(2 + l)
-  p.set(new Uint8Array([(l>>8)&0xff, l&0xff])) // uint16, BE
+  p.set([(l>>8)&0xff, l&0xff]) // uint16, BE
   p.set(data, 2)
   return p
 }
