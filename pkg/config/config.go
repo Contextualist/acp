@@ -125,7 +125,10 @@ func getConfig() (*Config, error) {
 }
 
 func setConfig(conf *Config) error {
-	_ = os.MkdirAll(filepath.Dir(configFilename), 0o700)
+	err := os.MkdirAll(filepath.Dir(configFilename), 0o700)
+	if err != nil {
+		return fmt.Errorf("error creating config directory for %s: %v", configFilename, err)
+	}
 	configFile, err := os.Create(configFilename)
 	if err != nil {
 		return fmt.Errorf("error writing config to %s: %v", configFilename, err)
