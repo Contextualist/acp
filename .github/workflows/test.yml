@@ -19,11 +19,11 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: stable
 
-      - uses: golangci/golangci-lint-action@v3
+      - uses: golangci/golangci-lint-action@v6
         with:
           version: latest
 
@@ -50,13 +50,13 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: stable
 
       - run: go build -ldflags "-X main.buildTag=dev.$(git rev-parse --short HEAD)" -o bin/ ./cmd/acp
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: acp-${{ matrix.os }}
           path: bin/
@@ -75,7 +75,7 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: stable
 
