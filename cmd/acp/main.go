@@ -112,7 +112,10 @@ func transfer(ctx context.Context, conf *config.Config, filenames []string, logg
 		return
 	}
 
-	var status interface{ Next(tea.Model) }
+	var status interface {
+		Next(tea.Model) string
+		Logf(string, ...any)
+	}
 	if len(filenames) > 0 {
 		var s io.WriteCloser
 		strategyFinal := strategyConsensus(strategy, info.Strategy)
@@ -122,7 +125,7 @@ func transfer(ctx context.Context, conf *config.Config, filenames []string, logg
 		}
 		s, status = monitor(s)
 		logger.Debugf("sending...")
-		err = sendFiles(filenames, s)
+		err = sendFiles(filenames, s, status.Logf)
 	} else {
 		var s io.ReadCloser
 		strategyFinal := strategyConsensus(info.Strategy, strategy)
@@ -136,7 +139,7 @@ func transfer(ctx context.Context, conf *config.Config, filenames []string, logg
 	}
 
 	if !*debug {
-		status.Next(loggerModel)
+		exitStatement = status.Next(loggerModel) // save in-transit log, if any
 	}
 	checkErr(err)
 }

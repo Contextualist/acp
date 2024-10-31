@@ -11,7 +11,7 @@ import (
 	"github.com/klauspost/pgzip"
 )
 
-func sendFiles(filenames []string, to io.WriteCloser) (err error) {
+func sendFiles(filenames []string, to io.WriteCloser, errorf func(string, ...any)) (err error) {
 	defer to.Close()
 	z := pgzip.NewWriter(to)
 	defer z.Close()
@@ -29,7 +29,7 @@ func sendFiles(filenames []string, to io.WriteCloser) (err error) {
 		if err != nil {
 			return err
 		}
-		err = tarWalk(fname, tz)
+		err = tarWalk(fname, tz, errorf)
 		if err != nil {
 			return fmt.Errorf("tar: %w", err)
 		}
