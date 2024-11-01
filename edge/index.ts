@@ -29,7 +29,7 @@ async function handleExchangeV2(req: Request, connInfo: ConnInfo): Promise<Respo
   if (req.headers.get("Content-Type") != "application/octet-stream")
     return new Response("Invalid content type", { status: 415 })
 
-  const pubAddr = joinHostPort(connInfo.remoteAddr)
+  const pubAddr = joinHostPort(connInfo.remoteAddr as Deno.NetAddr)
   const conn = req.body!.getReader({ mode: "byob" })
   const { priAddr, chanName, nPlan = 1, ...otherInfo }: ClientInfo = JSON.parse(
     new TextDecoder().decode(await receivePacket(conn))
@@ -59,7 +59,7 @@ async function handleExchangeV1(req: Request, connInfo: ConnInfo): Promise<Respo
   if (req.headers.get("Content-Type") != "application/octet-stream")
     return new Response("Invalid content type", { status: 415 })
 
-  const pubAddr = joinHostPort(connInfo.remoteAddr)
+  const pubAddr = joinHostPort(connInfo.remoteAddr as Deno.NetAddr)
   const conn = req.body!.getReader({ mode: "byob" })
   const [priAddr, chanName] = new TextDecoder().decode(
     await receivePacket(conn)
@@ -151,7 +151,7 @@ async function receivePacket(conn: ReadableStreamBYOBReader): Promise<Uint8Array
 
 function marshallPacket(data: Uint8Array): Uint8Array {
   const l = data.length
-  let p = new Uint8Array(2 + l)
+  const p = new Uint8Array(2 + l)
   p.set([(l>>8)&0xff, l&0xff]) // uint16, BE
   p.set(data, 2)
   return p
