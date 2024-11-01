@@ -12,7 +12,7 @@ import (
 	"runtime"
 )
 
-func tarWalk(source string, t *tar.Writer) error {
+func tarWalk(source string, t *tar.Writer, errorf func(string, ...any)) error {
 	sourceInfo, err := os.Stat(source)
 	if err != nil {
 		return fmt.Errorf("%s: stat: %w", source, err)
@@ -20,21 +20,25 @@ func tarWalk(source string, t *tar.Writer) error {
 	sourceIsDir := sourceInfo.IsDir()
 	return filepath.Walk(source, func(fpath string, info os.FileInfo, err error) error {
 		if err != nil {
-			return fmt.Errorf("traversing %s: %w", fpath, err)
+			errorf("traversing %s: %v", fpath, err)
+			return nil
 		}
 		if info == nil {
-			return fmt.Errorf("no file info for %s", fpath)
+			errorf("no file info for %s", fpath)
+			return nil
 		}
 		// build the name to be used within the archive
 		relName, err := nameInArchive(sourceIsDir, source, fpath)
 		if err != nil {
-			return err
+			errorf("name in archive: %v", err)
+			return nil
 		}
 		var linkTarget string
 		if info.Mode()&os.ModeSymlink != 0 {
 			linkTarget, err = os.Readlink(fpath)
 			if err != nil {
-				return fmt.Errorf("%s: readlink: %v", fpath, err)
+				errorf("%s: readlink: %v", fpath, err)
+				return nil
 			}
 			linkTarget = filepath.ToSlash(linkTarget)
 		}
@@ -42,7 +46,8 @@ func tarWalk(source string, t *tar.Writer) error {
 		if info.Mode().IsRegular() {
 			file, err = os.Open(fpath)
 			if err != nil {
-				return fmt.Errorf("%s: opening: %w", fpath, err)
+				errorf("%s: opening: %v", fpath, err)
+				return nil
 			}
 			defer file.Close()
 		}

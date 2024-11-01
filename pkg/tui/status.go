@@ -15,13 +15,15 @@ type (
 	// A StatusControl is the user handler for a StausModel
 	StatusControl[T io.Closer] struct {
 		*meteredReadWriteCloser[T]
+		auxLoggerControl
 		chNext chan tea.Msg
 	}
 )
 
 func NewStatusControl[T io.Closer]() *StatusControl[T] {
 	return &StatusControl[T]{
-		chNext: make(chan tea.Msg),
+		auxLoggerControl: newAuxLoggerControl(5),
+		chNext:           make(chan tea.Msg),
 	}
 }
 
@@ -31,10 +33,11 @@ func (c *StatusControl[T]) Monitor(stream T) T {
 	return any(c.meteredReadWriteCloser).(T)
 }
 
-// Next switches to the next BubbleTea Model and shut down current StatusModel
-func (c *StatusControl[_]) Next(m tea.Model) {
+// Next switches to the next BubbleTea Model, shuts down current StatusModel and passes the final log
+func (c *StatusControl[_]) Next(m tea.Model) string {
 	c.chNext <- modelSwitchMsg{m}
 	close(c.chNext)
+	return c.auxLoggerControl.epilogue()
 }
 
 type meteredReadWriteCloser[T io.Closer] struct {
@@ -90,12 +93,14 @@ func (m *meteredReadWriteCloser[_]) Close() error {
 // A StatusModel displays a updating stats of data transfer
 type StatusModel[T io.Closer] struct {
 	spinner spinner.Model
+	logger  tea.Model
 	status  *StatusControl[T]
 }
 
 func NewStatusModel[T io.Closer](c *StatusControl[T]) tea.Model {
 	return StatusModel[T]{
 		spinner: spinner.New(spinner.WithSpinner(spinner.Points)),
+		logger:  newAuxLoggerModel(c.auxLoggerControl),
 		status:  c,
 	}
 }
@@ -105,7 +110,7 @@ func (m StatusModel[_]) waitForNext() tea.Msg {
 }
 
 func (m StatusModel[_]) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.waitForNext)
+	return tea.Batch(m.spinner.Tick, m.logger.Init(), m.waitForNext)
 }
 
 func (m StatusModel[_]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -113,6 +118,10 @@ func (m StatusModel[_]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+	case logMsg, auxLoggerQuitMsg:
+		var cmd tea.Cmd
+		m.logger, cmd = m.logger.Update(msg)
 		return m, cmd
 	case modelSwitchMsg:
 		return modelSwitchTo(msg.model), nil
@@ -128,5 +137,9 @@ func (m StatusModel[_]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m StatusModel[_]) View() string {
 	rate, total := m.status.rate.Load(), m.status.total.Load()
-	return fmt.Sprintf("%s  %6s/s  %6s", m.spinner.View(), humanize.Bytes(rate), humanize.Bytes(total))
+	spinnerView := fmt.Sprintf("%s  %6s/s  %6s", m.spinner.View(), humanize.Bytes(rate), humanize.Bytes(total))
+	if loggerView := m.logger.View(); loggerView != "" {
+		return spinnerView + "\n" + loggerView
+	}
+	return spinnerView
 }
