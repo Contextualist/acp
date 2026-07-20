@@ -27,11 +27,11 @@ See also [comparison table with similar tools](#similar-projects).
 On any of your machine, run
 
 ```bash
-curl -fsS https://acp.deno.dev/get | sh
+curl -fsS https://acp.hya.moe/get | sh
 ```
 
 It sets up the current machine by downloading an executable and generating an identity.
-By default the install path is `/usr/local/bin`; you can change it by `curl -fsS 'https://acp.deno.dev/get?dir=/path/to/bin' | sh`
+By default the install path is `/usr/local/bin`; you can change it by `curl -fsS 'https://acp.hya.moe/get?dir=/path/to/bin' | sh`
 At the end, it prints out the command for setting up your other machines.
 You can run `acp --setup` any time you want to see the command.
 

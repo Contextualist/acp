@@ -6,7 +6,7 @@ After changing config on one device, run `acp --setup` to get the command for up
 
 List of configurable options:
 
-- `server` (default: `"https://acp.deno.dev"`): Endpoint for coordinating rendezvous
+- `server` (default: `"https://acp.hya.moe"`): Endpoint for coordinating rendezvous
 - `ipv6` (default: `false`): Establish P2P connection using IPv6 instead of IPv4.
   Note that both ends of a connection need to use the same IP protocol.
 - `ports` (default: `[0]`): Local port(s) binding for connection rendezvous.

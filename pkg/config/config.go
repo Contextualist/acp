@@ -31,7 +31,7 @@ type Config struct {
 
 func (conf *Config) ApplyDefault() {
 	if conf.Server == "" {
-		conf.Server = "https://acp.deno.dev"
+		conf.Server = "https://acp.hya.moe"
 	}
 	if len(conf.Ports) == 0 {
 		conf.Ports = []int{0}
