@@ -36,15 +36,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write # allow GitHub Action to authenticate with Deno Deploy
       contents: read
     steps:
 
       - uses: actions/checkout@v7
 
-      - uses: denoland/deployctl@v1
+      - uses: denoland/setup-deno@v2
         with:
-          project: acp
-          root: edge
-          entrypoint: index.ts
+          deno-version: v2.x
+
+      - name: Deploy to Deno Deploy
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+        run: deno deploy --non-interactive --prod --org ${{ secrets.DENO_DEPLOY_ORG }} --app acp edge
 

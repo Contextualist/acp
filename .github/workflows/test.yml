@@ -91,7 +91,7 @@ jobs:
         env:
           FILES: ./pkg
         run: |
-          deno run --allow-net=:8000 edge/index.ts &
+          deno run --allow-net=:8000 --unstable-kv edge/index.ts &
           go run ./cmd/acp --setup-with '{"id":"AAAAAAAA","psk":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","server":"http://localhost:8000"}'
           go run ./cmd/acp $FILES &
           go run ./cmd/acp -d $FILES-copied

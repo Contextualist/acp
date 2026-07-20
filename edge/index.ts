@@ -88,38 +88,83 @@ async function exchange(name: string, x0: string, conn: PacketReader): Promise<s
     return x1
   }
 
+  const abort = new AbortController()
   const [x1, source] = await Promise.any([
     // attempt to set up an in-memory exchange
     new Promise((resolve: ResolveStr) => {
       inbox.set(name, { xa: x0, xb_resolve: resolve })
     }).then((x) => [x, "in-memory"]),
     // attempt to do cross-regional exchange
-    exchangeViaBroadcastChannel(name, x0).then((x) => [x, "broadcast"]),
+    exchangeViaKV(name, x0, abort.signal).then((x) => [x, "kv"]),
     // if client closes early
     clientClosed(conn).then(() => ["", "cancel"]),
   ])
   if (source != "in-memory") { // cancel in-memory exchange
     inbox.delete(name)
   }
-  if (source != "broadcast") {
-    channels.get(name)?.close()
-    channels.delete(name)
+  if (source != "kv") { // cancel cross-regional exchange
+    abort.abort()
   }
   return x1
 }
 
 
-const channels = new Map<string, BroadcastChannel>()
+// Cross-regional exchange via Deno KV + kv.watch().
+// Two peers sharing `name` meet at a pair of KV entries:
+//   slot "a" (host) claimed atomically by whoever arrives first
+//   slot "b" (guest) written by the second peer as its reply
+// The host watches slot "b" for the reply; the guest reads slot "a" directly.
+// Since a channel name is reused across rounds, every entry carries a TTL as
+// a crash backstop.
+const kv = await Deno.openKv()
+const EXCHANGE_TTL_MS = 30_000 // entry lifetime; refreshed while a host waits
+const HEARTBEAT_MS = 10_000
 
-async function exchangeViaBroadcastChannel(name: string, x0: string): Promise<string> {
-  const channel = new BroadcastChannel(name)
-  channels.set(name, channel)
-  channel.postMessage(x0) // if the other party has already subscribed
-  const x1 = await (new Promise((resolve: ResolveStr) => {
-    channel.onmessage = (event: MessageEvent) => resolve(event.data)
-  }))
-  channel.postMessage(x0) // if the other party subscribes after the first post
-  return x1
+async function exchangeViaKV(name: string, x0: string, signal: AbortSignal): Promise<string> {
+  const keyA: Deno.KvKey = ["exchange", name, "a"]
+  const keyB: Deno.KvKey = ["exchange", name, "b"]
+
+  const claim = await kv.atomic()
+    .check({ key: keyA, versionstamp: null })
+    .set(keyA, x0, { expireIn: EXCHANGE_TTL_MS })
+    .commit()
+
+  if (!claim.ok) {
+    // A peer already hosts this exchange
+    const host = await kv.get<string>(keyA, { consistency: "strong" })
+    if (host.value === null) return "" // host vanished (expired/cancelled)
+    await kv.set(keyB, x0, { expireIn: EXCHANGE_TTL_MS })
+    return host.value
+  }
+
+  // We host this exchange
+  const claimVs = claim.versionstamp
+  let settled = false
+  const heartbeat = setInterval(() => {
+    if (settled) return
+    kv.set(keyA, x0, { expireIn: EXCHANGE_TTL_MS }).catch(() => { })
+  }, HEARTBEAT_MS)
+  const reader = kv.watch<[string]>([keyB]).getReader()
+  const onAbort = () => reader.cancel()
+  signal.addEventListener("abort", onAbort, { once: true })
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) return "" // cancelled via abort
+      const reply = value[0]
+      // Only accept a reply newer than our claim so a leftover from a previous
+      // round is ignored. versionstamps are globally monotonic.
+      if (reply.versionstamp !== null && reply.versionstamp > claimVs)
+        return reply.value!
+    }
+  } finally {
+    settled = true
+    clearInterval(heartbeat)
+    signal.removeEventListener("abort", onAbort)
+    reader.cancel().catch(() => { })
+    // The host finishes last, so tear down both slots.
+    kv.atomic().delete(keyA).delete(keyB).commit().catch(() => { })
+  }
 }
 
 
