@@ -49,7 +49,7 @@ func tarWalk(source string, t *tar.Writer, errorf func(string, ...any)) error {
 				errorf("%s: opening: %v", fpath, err)
 				return nil
 			}
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 		}
 		err = addFile(t, info, relName, linkTarget, file)
 		if err != nil {
@@ -132,8 +132,8 @@ func mkdir(dirPath string) error {
 	return nil
 }
 
-func writeNewFile(fpath string, in io.Reader, fm os.FileMode) error {
-	err := os.MkdirAll(filepath.Dir(fpath), 0755)
+func writeNewFile(fpath string, in io.Reader, fm os.FileMode) (err error) {
+	err = os.MkdirAll(filepath.Dir(fpath), 0755)
 	if err != nil {
 		return fmt.Errorf("%s: making directory for file: %w", fpath, err)
 	}
@@ -141,7 +141,11 @@ func writeNewFile(fpath string, in io.Reader, fm os.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("%s: creating new file: %w", fpath, err)
 	}
-	defer out.Close()
+	defer func() {
+		if cerr := out.Close(); err == nil {
+			err = cerr
+		}
+	}()
 	err = out.Chmod(fm)
 	if err != nil && runtime.GOOS != "windows" {
 		return fmt.Errorf("%s: changing file mode: %w", fpath, err)

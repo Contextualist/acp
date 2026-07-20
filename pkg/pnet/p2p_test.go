@@ -93,7 +93,7 @@ func TestExchangeConnInfo(t *testing.T) {
 	go runClient()
 	go runClient()
 	rx, ry := <-chRaddr, <-chRaddr
-	if !(rx == ra && ry == rb) && !(rx == rb && ry == ra) {
+	if (rx != ra || ry != rb) && (rx != rb || ry != ra) {
 		t.Errorf("PeerInfo.peerRaddr from exchange not matched: expect: {%s,%s}, got: {%s,%s}", ra, rb, rx, ry)
 	}
 }

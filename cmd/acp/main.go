@@ -42,7 +42,7 @@ var exitStatement string
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "%s (%s)\n%s\nOptions:\n", os.Args[0], buildTag, UsageBrief)
+		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "%s (%s)\n%s\nOptions:\n", os.Args[0], buildTag, UsageBrief)
 		flag.PrintDefaults()
 	}
 	flag.Parse()

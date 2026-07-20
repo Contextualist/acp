@@ -12,9 +12,17 @@ import (
 )
 
 func sendFiles(filenames []string, to io.WriteCloser, errorf func(string, ...any)) (err error) {
-	defer to.Close()
+	defer func() {
+		if cerr := to.Close(); err == nil {
+			err = cerr
+		}
+	}()
 	z := pgzip.NewWriter(to)
-	defer z.Close()
+	defer func() {
+		if cerr := z.Close(); err == nil {
+			err = cerr
+		}
+	}()
 
 	if len(filenames) == 1 && filenames[0] == "-" {
 		_, err = io.Copy(z, os.Stdin)
@@ -22,7 +30,11 @@ func sendFiles(filenames []string, to io.WriteCloser, errorf func(string, ...any
 	}
 
 	tz := tar.NewWriter(z)
-	defer tz.Close()
+	defer func() {
+		if cerr := tz.Close(); err == nil {
+			err = cerr
+		}
+	}()
 
 	for _, fname := range filenames {
 		fname, err = filepath.Abs(fname)
@@ -38,7 +50,7 @@ func sendFiles(filenames []string, to io.WriteCloser, errorf func(string, ...any
 }
 
 func receiveFiles(from io.ReadCloser) (err error) {
-	defer from.Close()
+	defer func() { _ = from.Close() }()
 	z, err := pgzip.NewReader(from)
 	if err != nil {
 		return
@@ -54,7 +66,7 @@ func receiveFiles(from io.ReadCloser) (err error) {
 		return
 	}
 
-	defer z.Close()
+	defer func() { _ = z.Close() }()
 	tz := tar.NewReader(z)
 
 	var theFile string

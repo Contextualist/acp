@@ -37,7 +37,7 @@ func (c *StatusControl[T]) Monitor(stream T) T {
 func (c *StatusControl[_]) Next(m tea.Model) string {
 	c.chNext <- modelSwitchMsg{m}
 	close(c.chNext)
-	return c.auxLoggerControl.epilogue()
+	return c.epilogue()
 }
 
 type meteredReadWriteCloser[T io.Closer] struct {

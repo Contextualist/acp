@@ -55,6 +55,6 @@ func TestSetupWith(t *testing.T) {
 func TestMain(m *testing.M) {
 	configFilename = filepath.Join(os.TempDir(), "acp-test-config.json")
 	rc := m.Run()
-	os.Remove(configFilename)
+	_ = os.Remove(configFilename)
 	os.Exit(rc)
 }

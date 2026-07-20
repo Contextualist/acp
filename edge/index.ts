@@ -30,7 +30,7 @@ async function handleExchangeV2(req: Request, connInfo: ConnInfo): Promise<Respo
     return new Response("Invalid content type", { status: 415 })
 
   const pubAddr = joinHostPort(connInfo.remoteAddr as Deno.NetAddr)
-  const conn = req.body!.getReader({ mode: "byob" })
+  const conn = new PacketReader(req.body!)
   const { priAddr, chanName, nPlan = 1, ...otherInfo }: ClientInfo = JSON.parse(
     new TextDecoder().decode(await receivePacket(conn))
   )
@@ -60,7 +60,7 @@ async function handleExchangeV1(req: Request, connInfo: ConnInfo): Promise<Respo
     return new Response("Invalid content type", { status: 415 })
 
   const pubAddr = joinHostPort(connInfo.remoteAddr as Deno.NetAddr)
-  const conn = req.body!.getReader({ mode: "byob" })
+  const conn = new PacketReader(req.body!)
   const [priAddr, chanName] = new TextDecoder().decode(
     await receivePacket(conn)
   ).split('|')
@@ -71,16 +71,16 @@ async function handleExchangeV1(req: Request, connInfo: ConnInfo): Promise<Respo
   if (x1 == "")
     return new Response("")
   //console.log(`exchanged, got ${x1}`)
-  
+
   const msg = marshallPacket(new TextEncoder().encode(x1))
   return new Response(msg)
 }
 
 
 type ResolveStr = (x: string) => void
-const inbox = new Map<string, {xa: string, xb_resolve: ResolveStr}>()
+const inbox = new Map<string, { xa: string, xb_resolve: ResolveStr }>()
 
-async function exchange(name: string, x0: string, conn: ReadableStreamBYOBReader): Promise<string> {
+async function exchange(name: string, x0: string, conn: PacketReader): Promise<string> {
   if (inbox.has(name)) { // the other party has set up an in-memory exchange
     const { xa: x1, xb_resolve: x0_resolve } = inbox.get(name)!
     x0_resolve(x0)
@@ -123,8 +123,8 @@ async function exchangeViaBroadcastChannel(name: string, x0: string): Promise<st
 }
 
 
-async function clientClosed(conn: ReadableStreamBYOBReader): Promise<void> {
-  await conn.read(new Uint8Array(1))
+async function clientClosed(conn: PacketReader): Promise<void> {
+  await conn.waitClosed()
   //console.log("client early close")
 }
 
@@ -136,23 +136,57 @@ function joinHostPort(addr: Deno.NetAddr): string {
 }
 
 
-async function receivePacket(conn: ReadableStreamBYOBReader): Promise<Uint8Array> {
-  let buf = (await conn.read(new Uint8Array(2))).value!
+class PacketReader {
+  private reader: ReadableStreamDefaultReader<Uint8Array>
+  private buf: Uint8Array = new Uint8Array(0)
+
+  constructor(body: ReadableStream<Uint8Array>) {
+    this.reader = body.getReader()
+  }
+
+  async readN(n: number): Promise<Uint8Array> {
+    while (this.buf.length < n) {
+      const { value, done } = await this.reader.read()
+      if (done)
+        throw new Deno.errors.UnexpectedEof
+      const next = new Uint8Array(this.buf.length + value.length)
+      next.set(this.buf)
+      next.set(value, this.buf.length)
+      this.buf = next
+    }
+    const out = this.buf.slice(0, n)
+    this.buf = this.buf.slice(n)
+    return out
+  }
+
+  async waitClosed(): Promise<void> {
+    if (this.buf.length > 0)
+      return
+    try {
+      await this.reader.read()
+    } catch {
+      // the request may be torn down after the exchange completes
+    }
+  }
+}
+
+
+async function receivePacket(conn: PacketReader): Promise<Uint8Array> {
+  const header = await conn.readN(2)
   const lenCap = 1e3
-  const plen = (buf[0]<<8) | buf[1] // uint16, BE
+  const plen = (header[0] << 8) | header[1] // uint16, BE
   if (plen == 0 || plen > lenCap) {
     console.error(`received suspicious packet header declearing len=${plen}`)
     throw new Deno.errors.InvalidData
   }
-  buf = (await conn.read(new Uint8Array(plen))).value!
-  return buf
+  return await conn.readN(plen)
 }
 
 
-function marshallPacket(data: Uint8Array): Uint8Array {
+function marshallPacket(data: Uint8Array): Uint8Array<ArrayBuffer> {
   const l = data.length
   const p = new Uint8Array(2 + l)
-  p.set([(l>>8)&0xff, l&0xff]) // uint16, BE
+  p.set([(l >> 8) & 0xff, l & 0xff]) // uint16, BE
   p.set(data, 2)
   return p
 }

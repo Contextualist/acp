@@ -217,7 +217,7 @@ func waitFileTransferEnd(fname string) (err error) {
 	if err != nil {
 		return fmt.Errorf("cannot create file watcher: %w", err)
 	}
-	defer watcher.Close()
+	defer func() { _ = watcher.Close() }()
 	parent := path.Dir(fname)
 	err = watcher.Add(parent)
 	if err != nil {
@@ -248,6 +248,6 @@ type fileWithCleanup struct {
 }
 
 func (f *fileWithCleanup) Close() error {
-	_ = os.Remove(f.File.Name())
+	_ = os.Remove(f.Name())
 	return f.File.Close()
 }

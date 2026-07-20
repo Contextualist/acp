@@ -32,7 +32,7 @@ func NewHTTPClient(useIpv6 bool, laddr string) *HTTPClient {
 		close(client.chLaddr)
 		return c, err
 	}
-	client.Client.Transport = tr
+	client.Transport = tr
 	return client
 }
 

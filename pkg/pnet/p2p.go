@@ -111,9 +111,9 @@ func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrE
 	defaultLogger.Debugf("send %s", infoEnc)
 
 	if ctx.Done() != nil {
-		defer sender.Close()
+		defer func() { _ = sender.Close() }()
 	} else {
-		sender.Close()
+		_ = sender.Close()
 	}
 
 	defaultLogger.Infof("waiting for peer...")
@@ -129,7 +129,7 @@ func exchangeConnInfoProto(ctx context.Context, sender io.WriteCloser, chRecvOrE
 		return nil, recvOrErr.error
 	}
 	recv, err := receivePacket(recvOrErr.ReadCloser)
-	_ = recvOrErr.ReadCloser.Close()
+	_ = recvOrErr.Close()
 	if err != nil {
 		return nil, fmt.Errorf("failed to communicate with the bridge: %w", err)
 	}
@@ -176,7 +176,7 @@ func rendezvous(ctx context.Context, laddr string, peerAddrs []string) (conn net
 	if err != nil {
 		return nil, fmt.Errorf("unable to set up rendezvous: %w", err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	cc := make(chan struct{})
 	defer close(cc)
 	go accept(ctx, l, chWin, cc)
@@ -223,9 +223,9 @@ func accept(ctx context.Context, l net.Listener, chWin chan<- net.Conn, cc <-cha
 	case chWin <- conn:
 		defaultLogger.Debugf("accepted %v", conn.LocalAddr())
 	case <-cc:
-		conn.Close()
+		_ = conn.Close()
 	case <-ctx.Done():
-		conn.Close()
+		_ = conn.Close()
 	}
 }
 
@@ -252,8 +252,8 @@ func connect(ctx context.Context, laddr, raddr string, chWin chan<- net.Conn, cc
 	case chWin <- conn:
 		defaultLogger.Debugf("connected %v->%v", laddr, raddr)
 	case <-cc:
-		conn.Close()
+		_ = conn.Close()
 	case <-ctx.Done():
-		conn.Close()
+		_ = conn.Close()
 	}
 }
